@@ -14,6 +14,7 @@
 #include "utils.h"
 
 #define BOOT_CFG_PATH "/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg"
+#define NOSHARE_FLAG  "/mnt/SDCARD/.userdata/m21/usb_noshare"
 #define GADGET_DIR    "/sys/kernel/config/usb_gadget/g1"
 #define UDC_CTRL      "4100000.udc-controller"
 
@@ -51,7 +52,7 @@ enum {
 static int cur_storage = STORAGE_OFF;
 static int cur_adb     = 1;
 static int cur_serial  = 0;
-static int cur_net     = 0;
+static int cur_net     = 0;   /* 0=off, 1=on (+internet via PC), 2=on (local only) */
 static int boot_net    = 0;
 static int cur_role    = ROLE_DEVICE;
 static int keep_bg     = 0;
@@ -85,7 +86,7 @@ static void detect_current_state(void) {
     }
     cur_adb = is_link_present(GADGET_DIR "/configs/c.1/ffs.adb") ? 1 : 0;
     cur_serial = is_link_present(GADGET_DIR "/configs/c.1/gser.0") ? 1 : 0;
-    cur_net = is_link_present(GADGET_DIR "/configs/c.1/ecm.usb0") ? 1 : 0;
+    cur_net = is_link_present(GADGET_DIR "/configs/c.1/ecm.usb0") ? (access(NOSHARE_FLAG, F_OK) == 0 ? 2 : 1) : 0;
 
     FILE *fp = fopen(BOOT_CFG_PATH, "r");
     if (fp) {
@@ -206,7 +207,7 @@ static void apply_usb_config(void) {
                  cur_storage == STORAGE_RW ? "RW" : (cur_storage == STORAGE_RO ? "RO" : "OFF"),
                  cur_adb ? "ON" : "OFF",
                  cur_serial ? "ON" : "OFF",
-                 cur_net ? "ECM 192.168.7.1" : "OFF");
+                 cur_net == 1 ? "ECM 192.168.7.1 +NET" : (cur_net == 2 ? "ECM 192.168.7.1 local" : "OFF"));
     } else {
         snprintf(status_msg, sizeof(status_msg), "All USB Gadget Functions Disabled");
     }
@@ -277,7 +278,15 @@ int main(int argc, char *argv[]) {
                     apply_usb_config();
                     break;
                 case ITEM_NETWORK:
-                    cur_net = !cur_net;
+                    cur_net = (cur_net + dir + 3) % 3;
+                    if (cur_net == 2) {
+                        mkdir("/mnt/SDCARD/.userdata", 0777);
+                        mkdir("/mnt/SDCARD/.userdata/m21", 0777);
+                        FILE *nf = fopen(NOSHARE_FLAG, "w");
+                        if (nf) fclose(nf);
+                    } else {
+                        unlink(NOSHARE_FLAG);
+                    }
                     cur_role = ROLE_DEVICE;
                     apply_usb_config();
                     break;
@@ -334,7 +343,7 @@ int main(int argc, char *argv[]) {
             snprintf(row_buf[ITEM_SERIAL], sizeof(row_buf[0]), "USB Serial (ttyGS0): %s",
                      cur_serial ? "< ON >" : "< OFF >");
             snprintf(row_buf[ITEM_NETWORK], sizeof(row_buf[0]), "USB Network (192.168.7.x): %s",
-                     cur_net ? "< ON (Ethernet) >" : "< OFF >");
+                     cur_net == 1 ? "< ON (+Internet via PC) >" : (cur_net == 2 ? "< ON (Local only) >" : "< OFF >"));
             snprintf(row_buf[ITEM_BOOT_NET], sizeof(row_buf[0]), "Boot USB Network: %s",
                      boot_net ? "< ON >" : "< OFF >");
             snprintf(row_buf[ITEM_ROLE], sizeof(row_buf[0]), "USB Port Role: %s",

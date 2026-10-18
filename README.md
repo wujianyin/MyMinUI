@@ -34,6 +34,7 @@
 | **USB Network** | CDC-ECM 以太网,设备 `192.168.7.1`,电脑通过内置 DHCP 得到 `192.168.7.2` | ✅ macOS 上开机/切换流程实测通过;🟡 菜单界面本身还没有在设备屏幕上点按验证 |
 | **共享宿主机上网** | 设备端:USB 网络启动后自动加默认路由 `192.168.7.2` 和 DNS;宿主端用 `host-tools/share-internet-*.sh` 开 NAT | 🟡 设备端已实测(路由/DNS 正确);宿主端 NAT 脚本只做了语法和 dry-run 检查,待真机联网验证 |
 | OTG 角色 | Device(连电脑)/ Host(接手柄、U 盘) | ✅ 已测 |
+| **USB Network 三态** | OFF / ON(设备经 PC 上外网) / ON(仅本地,不设默认路由/DNS) | ✅ 脚本逻辑已实测;🟡 屏幕菜单未实测 |
 | **Boot Default / Boot USB Network** | 开机默认 USB 模式(ADB / ADB+存储 RW / RO / 关闭)以及是否开机启用 USB 网络 | ✅ `adb_only`、`adb_ums_ro`、网络组合已重启实测;✅ `adb_ums_rw` 已重启实测;🟡 `off` 未测(会关闭 USB,需拔 SD 卡恢复配置) |
 
 实现位置:

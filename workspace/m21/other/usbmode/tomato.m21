@@ -187,8 +187,10 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 					i=0
 					while [ $i -lt 20 ] && ! ifconfig usb0 >/dev/null 2>&1; do usleep 200000; i=$((i+1)); done
 					ifconfig usb0 192.168.7.1 netmask 255.255.255.0 up >> "$USB_LOG" 2>&1
-					ip route replace default via 192.168.7.2 dev usb0 >> "$USB_LOG" 2>&1 || route add default gw 192.168.7.2 usb0 >> "$USB_LOG" 2>&1
-					grep -q '^nameserver' /tmp/resolv.conf.auto 2>/dev/null || printf 'nameserver 223.5.5.5\nnameserver 119.29.29.29\nnameserver 8.8.8.8\n' > /tmp/resolv.conf.auto
+					if [ ! -e /mnt/SDCARD/.userdata/m21/usb_noshare ]; then
+						ip route replace default via 192.168.7.2 dev usb0 >> "$USB_LOG" 2>&1 || route add default gw 192.168.7.2 usb0 >> "$USB_LOG" 2>&1
+						grep -q '^nameserver' /tmp/resolv.conf.auto 2>/dev/null || printf 'nameserver 223.5.5.5\nnameserver 119.29.29.29\nnameserver 8.8.8.8\n' > /tmp/resolv.conf.auto
+					fi
 					cp -f "$UP/dhcpd_mini.elf" /tmp/dhcpd_mini.elf 2>/dev/null
 					chmod +x /tmp/dhcpd_mini.elf 2>/dev/null
 					chroot ${ROOTFS_MOUNTPOINT} /tmp/dhcpd_mini.elf usb0 192.168.7.1 192.168.7.2 >/tmp/dhcpd.log 2>&1 &

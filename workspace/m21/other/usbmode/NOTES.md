@@ -244,7 +244,10 @@ arm-linux-gnueabihf-strip usbmode.elf'
 - **验证状态(已在真机跑通)**:Mac 端 `share-internet-macos.sh on` 后,设备 `ping 8.8.8.8`、`ping www.baidu.com` 通;
   `chroot /overlay /bin/busybox wget -qO- http://www.baidu.com` 能取回页面(chroot 里的 busybox `wget` 可用,原厂的会段错误);
   1MB 文件下载 md5 一致。设备自带 `nc` 过于简陋(不发数据),不要用它测 HTTP。
-- 未做:菜单里的"共享上网"开关(目前只要 USB 网络开着就设置路由/DNS,宿主不 NAT 时无害);Windows 请用系统自带"Internet 连接共享";
+- 已做:菜单里 *USB Network* 一行现在是三态 `OFF / ON (+Internet via PC) / ON (Local only)`(不新增行,避免屏幕放不下)。
+  “Local only” 在 `/mnt/SDCARD/.userdata/m21/usb_noshare` 放一个标志文件,`usbnet.sh up` 和 `tomato` 看到它就不设默认路由/DNS(默认无标志=共享)。
+  已实测:开机带标志无默认路由、无标志有默认路由;`usbmode.elf` 已重编但菜单屏幕操作未实测。
+- 未做:Windows 请用系统自带"Internet 连接共享";
   `dhcpd_mini` **有意**不下发网关/DNS:它服务的对象是宿主机,而设备自己没有外网,下发网关会让宿主机把设备当成默认出口、劫持宿主机的网络。
   设备方向的网关/DNS(指向宿主机)由 `usbnet.sh up` 直接设置,这一项不需要做。
 
