@@ -12,11 +12,17 @@ on)
 off)
 	rm -f $G/configs/c.1/ecm.usb0
 	killall dhcpd_mini.elf 2>/dev/null
+	ip route del default via 192.168.7.2 2>/dev/null
 	;;
 up)  # after the UDC is bound: bring up the interface and DHCP server
 	i=0
 	while [ $i -lt 20 ] && ! ifconfig usb0 >/dev/null 2>&1; do sleep 0.2; i=$((i+1)); done
 	ifconfig usb0 192.168.7.1 netmask 255.255.255.0 up
+	# Internet via the host: default route + DNS (only works if the host shares its connection,
+	# see host-tools/). Harmless otherwise.
+	ip route replace default via 192.168.7.2 dev usb0 2>/dev/null || route add default gw 192.168.7.2 usb0 2>/dev/null
+	grep -q '^nameserver' /tmp/resolv.conf.auto 2>/dev/null || \
+		printf 'nameserver 223.5.5.5\nnameserver 119.29.29.29\nnameserver 8.8.8.8\n' > /tmp/resolv.conf.auto
 	killall dhcpd_mini.elf 2>/dev/null
 	cp -f "$DIR/dhcpd_mini.elf" /tmp/dhcpd_mini.elf && chmod +x /tmp/dhcpd_mini.elf
 	/tmp/dhcpd_mini.elf usb0 192.168.7.1 192.168.7.2 >/tmp/dhcpd.log 2>&1 &

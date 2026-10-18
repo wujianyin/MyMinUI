@@ -33,3 +33,9 @@ Build: `make KCFLAGS="-march=armv7-a" M=<dir with kmod/*> modules`, then `strip 
 - The UDC must be unbound (`echo "" > UDC`) before adding/removing function links, otherwise the
   new function is never bound (no `usb0`).
 - macOS/Linux hosts: the host gets 192.168.7.2 via DHCP; the device is 192.168.7.1.
+
+## Internet via the host
+`usbnet.sh up` (and `tomato` at boot) set `default via 192.168.7.2` and, if missing, DNS in `/tmp/resolv.conf.auto`.
+The host must NAT: `host-tools/share-internet-macos.sh on` (sudo, pf anchor `com.apple/250.usbshare`) or
+`share-internet-linux.sh on`. Then on the device: `ping -c3 8.8.8.8`, `ping -c3 www.baidu.com`,
+`printf 'GET / HTTP/1.0\r\nHost: www.baidu.com\r\n\r\n' | nc www.baidu.com 80 | head -5` (adb shell; the stock curl has no protocols).

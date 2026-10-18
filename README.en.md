@@ -20,6 +20,7 @@ a hackable device (USB networking/storage/debug), documented low-level internals
 |---|---|
 | Storage / ADB / Serial / OTG role | tested |
 | USB Network (ECM) | tested on macOS (boot + switching flow); menu UI not yet verified on the device screen |
+| Internet via the host | device side done and checked (default route 192.168.7.2 + DNS set automatically); host NAT scripts in `host-tools/` only syntax/dry-run checked, not yet verified against a real connection |
 | Boot defaults | `adb_only`, `adb_ums_ro`, and network combinations tested after reboot; `adb_ums_rw` and `off` not individually tested |
 
 The vendor kernel has no ECM/NCM/RNDIS, so out-of-tree modules (`u_ether_x.ko`, `f_ecm_x.ko`) are built against a mainline 5.4.61 tree patched
@@ -30,7 +31,8 @@ FunctionFS mount into the chroot, ECM fallback). Full work log, pitfalls and rem
 - Menu items not yet exercised on the device; `adb_ums_rw` / `off` boot modes untested.
 - Only macOS verified. Windows (RNDIS/NCM) modules compile but are untested and not shipped.
 - Few USB endpoints: ADB + storage + network use all of them; adding USB serial will probably not fit.
-- Network is point-to-point only (single DHCP lease, no gateway/DNS/NAT).
+- The device has no WiFi hardware/driver; Internet access needs the host to share its connection (`host-tools/share-internet-*.sh`). The stock `curl` was built with no protocols (`Protocols:` is empty), so use `ping`/`nc` to test.
+- `dhcpd_mini` hands out a single lease (192.168.7.2) without gateway/DNS options; the device sets its own default route/DNS.
 - The real source of `tomato` was not found in the repo (`build/FULL/m21/tomato` is git-ignored); `tomato.m21` is a copy of the on-device file.
 - The pak is not wired into the workspace makefile; prebuilt `.elf`/`.ko` are committed (build steps are in NOTES.md).
 - Exposing the SD card read-write while the device uses it can corrupt it; a hard reset can leave it read-only (repair steps in NOTES.md).

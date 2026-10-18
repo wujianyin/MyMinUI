@@ -229,6 +229,26 @@ arm-linux-gnueabihf-strip usbmode.elf'
 
 ---------------------------------------------------------------------
 
+## 6.1 共享上网(后续补充)
+- 设备**没有 WiFi 硬件/驱动**(没有 `wlan0`、`/sys/class/ieee80211`、`rfkill`),只有 `usb0`;原厂 `curl 7.54.1` 编译时没有任何协议
+  (`curl --version` 的 `Protocols:` 为空),所以 `curl http(s)://…` 一律报 `Protocol not supported`,与网络是否通无关;
+  busybox `wget` 在设备上会段错误。测试用 `ping`、`nslookup`、`nc`(adb shell 里有 `nc`,chroot 里没有)。
+- 已实现(设备端):`usbnet.sh up` 与 `tomato` 在配好 `usb0` 后 `ip route replace default via 192.168.7.2 dev usb0`,
+  并在 `/tmp/resolv.conf.auto`(`/etc/resolv.conf` 的最终目标,chroot 与宿主共用)没有 nameserver 时写入
+  223.5.5.5 / 119.29.29.29 / 8.8.8.8。`usbnet.sh off` 删除该默认路由。
+- 宿主端(`skeleton/.../USB Mode.pak/host-tools/`):
+  - `share-internet-macos.sh on|off|status`:`sysctl net.inet.ip.forwarding=1` + 在 pf anchor `com.apple/250.usbshare` 里加
+    `nat on <出口> from 192.168.7.0/24 to any -> (<出口>)`(系统默认 `/etc/pf.conf` 有 `nat-anchor "com.apple/*"`,不会替换主规则集)。
+    出口接口自动取 `route -n get 8.8.8.8`;开着 VPN 时是 `utunN`,不通就断开 VPN 或手动指定 Wi-Fi 接口。需要 sudo。
+  - `share-internet-linux.sh on|off`:iptables MASQUERADE + FORWARD。
+- **验证状态**:设备端实测(路由/DNS 正确,`ping 192.168.7.2` 通,`ping 8.8.8.8` 从 Network unreachable 变为 100% loss,说明包已送往 Mac)。
+  宿主端 NAT 脚本需要 sudo,我这边没有 sudo 权限,只做了 `sh -n`、`DRYRUN=1` 和 `pfctl -n` 语法检查,**尚未在真机上跑通外网**。
+  下一步:`sudo host-tools/share-internet-macos.sh on` 后在设备上测 `ping 8.8.8.8`、`ping www.baidu.com`、`nc www.baidu.com 80`。
+- 未做:菜单里的"共享上网"开关(目前只要 USB 网络开着就设置路由/DNS,宿主不 NAT 时无害);Windows 请用系统自带"Internet 连接共享";
+  `dhcpd_mini` 仍不下发网关/DNS。
+
+---------------------------------------------------------------------
+
 ## 7. 速查
 
 - 进设备:`adb shell`;设备 `usb0=192.168.7.1`;Mac 端网卡名通常是 `en16`("Tina ADB"),随接口变化。
