@@ -1,0 +1,39 @@
+#!/bin/sh /etc/rc.common
+#Copyright (c) 2018-2020 Allwinner Technology Co. Ltd.
+
+START=99
+DEPEND=done
+
+
+PROG=/sdcard/gameui
+export LD_LIBRARY_PATH=/mnt/SDCARD
+export MG_CFG_PATH=/usr/share/minigui
+/bin/mount /dev/mmcblk0p1 /mnt/SDCARD
+/bin/ln -s /mnt/SDCARD /sdcard
+/bin/ln -s /sdcard /data
+/bin/chmod 7 $PROG
+#insmod /lib/mod201.ko
+#/sdcard/gameui&
+/usr/bin/switchev&
+#/usr/bin/aplay  /usr/bin/boot_audio.wav
+#. /usr/loadapp.sh
+#start(){
+	
+#    ln -s /mnt/SDCARD /mnt/mmc
+#	ln -s /usr /mnt/vendor
+#	ln -s /overlay /mnt/data
+	
+#    $PROG &
+	
+#}
+BIN="/usr/guimenu"
+
+while [ -f $BIN ]
+do
+	if [ $(cat /sys/class/gpadc/data) -lt 1030 ] && [ $(cat /sys/class/gpadc/charge) -eq 0 ];then
+		   # echo "low pwer $(cat /sys/class/gpadc/data)"
+			/usr/bin/lowpower
+	fi
+	$BIN
+	
+done

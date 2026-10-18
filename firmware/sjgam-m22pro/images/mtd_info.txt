@@ -1,0 +1,15 @@
+dev:    size   erasesize  name
+mtd0: 00100000 00001000 "uboot"
+mtd1: 00020000 00001000 "env"
+mtd2: 00400000 00001000 "boot"
+mtd3: 000ed800 00001000 "boot-resource"
+mtd4: 009f2800 00001000 "rootfs"
+mtd5: 00000000 00001000 "UDISK"
+major minor  #blocks  name
+
+  31        0       1024 mtdblock0
+  31        1        128 mtdblock1
+  31        2       4096 mtdblock2
+  31        3        950 mtdblock3
+  31        4      10186 mtdblock4
+ 179        0   31276032 mmcblk0

@@ -1,0 +1,31 @@
+#!/bin/sh
+
+#export SDL_NOMOUSE=1
+export LD_LIBRARY_PATH=/mnt/SDCARD/lib
+export HOME=/mnt/SDCARD
+
+ACT="/tmp/.next"
+CMD="/mnt/SDCARD/emulationstation"
+#MISCBIN="/mnt/mmc/dmenu.bin"
+
+#if [ -f  $MISCBIN ]
+#then
+#	CMD=$MISCBIN
+#fi
+
+#touch "$ACT"
+if [ -f "/tmp/.testmode" ]; then
+	/usr/bin/testmode
+fi
+if $CMD; then
+    if [ -f "$ACT" ]; then
+        if  ! sh $ACT; then
+#           sleep 5
+            echo
+        fi
+        rm -f "$ACT"
+    fi
+else
+	/usr/bin/smallui
+    #sleep 30
+fi
