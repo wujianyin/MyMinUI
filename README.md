@@ -34,7 +34,7 @@
 | **USB Network** | CDC-ECM 以太网,设备 `192.168.7.1`,电脑通过内置 DHCP 得到 `192.168.7.2` | ✅ macOS 上开机/切换流程实测通过;🟡 菜单界面本身还没有在设备屏幕上点按验证 |
 | **共享宿主机上网** | 设备端:USB 网络启动后自动加默认路由 `192.168.7.2` 和 DNS;宿主端用 `host-tools/share-internet-*.sh` 开 NAT | 🟡 设备端已实测(路由/DNS 正确);宿主端 NAT 脚本只做了语法和 dry-run 检查,待真机联网验证 |
 | OTG 角色 | Device(连电脑)/ Host(接手柄、U 盘) | ✅ 已测 |
-| **Boot Default / Boot USB Network** | 开机默认 USB 模式(ADB / ADB+存储 RW / RO / 关闭)以及是否开机启用 USB 网络 | ✅ `adb_only`、`adb_ums_ro`、网络组合已重启实测;🟡 `adb_ums_rw`、`off` 未单独测 |
+| **Boot Default / Boot USB Network** | 开机默认 USB 模式(ADB / ADB+存储 RW / RO / 关闭)以及是否开机启用 USB 网络 | ✅ `adb_only`、`adb_ums_ro`、网络组合已重启实测;✅ `adb_ums_rw` 已重启实测;🟡 `off` 未测(会关闭 USB,需拔 SD 卡恢复配置) |
 
 实现位置:
 - pak 与二进制:`skeleton/EXTRAS/Tools/m21/USB Mode.pak/`
@@ -61,13 +61,13 @@
 
 ## 已知问题 / 待办
 
-- 🟡 USB Mode 菜单(新增的两项)还没有在设备屏幕上实际操作验证;`adb_ums_rw`、`off` 开机模式未单独重启测试。
+- 🟡 USB Mode 菜单(新增的两项)还没有在设备屏幕上实际操作验证;`off` 开机模式未测(`adb_ums_rw` 已测通过)。
 - 🟡 仅在 macOS 上验证了 USB 网络。**Windows(RNDIS/NCM)** 模块已能编译,但未上机测试,也没放进 pak。
 - 🟡 USB 端点有限(3 对 bulk + 1 个 interrupt):ADB + 存储 + 网络刚好用满,再叠加 USB Serial 大概率放不下,尚未做互斥/提示。
 - 🟡 设备本身**没有 WiFi 硬件/驱动**,上外网只能靠宿主机共享(Mac 上已实测可上外网);设备端自带的 `curl` 编译时没有任何协议(`Protocols:` 为空),
   `https`/`http` 都会报 `Protocol not supported`,自带 `nc` 也不发数据;测试请用 `ping` 或 `chroot /overlay /bin/busybox wget`(见 NOTES.md)。
 - ✅ 已修复:USB 网络大帧(>512 字节)收发损坏——原因是 sunxi UDC 的 DMA 要求 4 字节对齐,`u_ether` 的 `NET_IP_ALIGN` 让数据偏移了 2 字节(NOTES.md §6.2)。
-- 🟡 `dhcpd_mini` 只发一个固定租约(192.168.7.2),不下发网关/DNS;设备端的默认路由/DNS 由 `usbnet.sh up`(和 `tomato`)直接设置。
+- ℹ️ `dhcpd_mini` 只发一个固定租约(192.168.7.2),**有意**不下发网关/DNS(它服务的是宿主机,下发会劫持宿主机默认路由);设备端的默认路由/DNS 由 `usbnet.sh up`(和 `tomato`)直接设置。
 - 🟡 仓库里 `tomato` 的真实来源文件还没找到(构建目录 `build/FULL/m21/tomato` 被 `.gitignore` 忽略),
   目前 `tomato.m21` 只是设备上那一份的拷贝,需要合并回真正的来源。
 - 🟡 pak 还没有接入 `workspace` 的 makefile,`.elf`/`.ko` 是预编译后直接提交的;编译方法见 NOTES.md。

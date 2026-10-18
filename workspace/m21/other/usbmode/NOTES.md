@@ -29,7 +29,7 @@ MyMinUI(`m21` 平台)跑在 32GB FAT SD 卡上的 `chroot /overlay`(glibc 2.26 �
 - `adb_ums_ro` + `net`:ADB + 只读 SD(Mac 上挂出 SAMSUNGDISK)+ USB 网络 三者同时可用。
 - 设备上当前开机默认已恢复为 `adb_only`(不带网络)。
 
-**未测**:`adb_ums_rw`、`off` 两种开机模式;菜单里手动切换网络(逻辑用 `t_net.sh` 在 chroot 中模拟过 off/on/up 流程,可用);
+**未测**:`off` 开机模式(会关闭 USB,adb 也没了,需拔 SD 卡改回配置);`adb_ums_rw` 已重启实测通过(ffs.adb+ffs.ums、umsd 运行、Mac 上出现 SD 卡);菜单里手动切换网络(逻辑用 `t_net.sh` 在 chroot 中模拟过 off/on/up 流程,可用);
 Windows 主机(RNDIS/NCM);Linux 主机(理论可行,没试)。
 
 ---------------------------------------------------------------------
@@ -210,7 +210,7 @@ arm-linux-gnueabihf-strip usbmode.elf'
    需要确认它由哪个文件/脚本生成:可从 `makefile` 里的 `m21` 目标和 `skeleton/BASE` 追查)。
 2. **在设备屏幕上实测菜单**:新增的 USB Network / Boot USB Network 两项、状态栏文案、与 Storage/ADB/Serial 的组合切换;
    以及“绑定失败自动回退”分支(`usbmode.c` 里 `cur_net` 失败路径)。
-3. **补测开机模式** `adb_ums_rw`、`off`;以及 `adb_ums_ro/rw` + `net` 之外的组合(例如 serial + net)。
+3. **补测开机模式** `off`(`adb_ums_rw` 已测通过);以及 `adb_ums_ro/rw` + `net` 之外的组合(例如 serial + net)。
 4. **端点资源上限**:UDC 只有 ep1/ep2/ep5 三对 bulk + ep4 interrupt + ep3 iso。
    ADB(1 对)+ UMS(1 对)+ ECM 数据(1 对)+ ECM 通知(ep4)刚好用满;再加 `gser`(需要 1 对 bulk + 1 个 INT)大概率放不下,
    需要在菜单里做互斥/提示,或实测。
@@ -245,7 +245,8 @@ arm-linux-gnueabihf-strip usbmode.elf'
   `chroot /overlay /bin/busybox wget -qO- http://www.baidu.com` 能取回页面(chroot 里的 busybox `wget` 可用,原厂的会段错误);
   1MB 文件下载 md5 一致。设备自带 `nc` 过于简陋(不发数据),不要用它测 HTTP。
 - 未做:菜单里的"共享上网"开关(目前只要 USB 网络开着就设置路由/DNS,宿主不 NAT 时无害);Windows 请用系统自带"Internet 连接共享";
-  `dhcpd_mini` 仍不下发网关/DNS。
+  `dhcpd_mini` **有意**不下发网关/DNS:它服务的对象是宿主机,而设备自己没有外网,下发网关会让宿主机把设备当成默认出口、劫持宿主机的网络。
+  设备方向的网关/DNS(指向宿主机)由 `usbnet.sh up` 直接设置,这一项不需要做。
 
 ---------------------------------------------------------------------
 
