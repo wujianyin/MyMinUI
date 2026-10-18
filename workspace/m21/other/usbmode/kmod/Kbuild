@@ -1,0 +1,6 @@
+ccflags-y += -I$(srctree)/drivers/usb/gadget -I$(srctree)/drivers/usb/gadget/function -I$(srctree)/drivers/usb/gadget/udc
+obj-m += u_ether_x.o f_ecm_x.o f_ncm_x.o f_rndis_x.o
+u_ether_x-y := u_ether.o
+f_ecm_x-y := f_ecm.o
+f_ncm_x-y := f_ncm.o
+f_rndis_x-y := f_rndis.o rndis.o

@@ -1,0 +1,4 @@
+398a399
+> 	char sunxi_pad[16];
+407a409
+> 	char sunxi_pad2[184];

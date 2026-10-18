@@ -1,0 +1,10 @@
+--- /dev/fd/12	2026-10-18 23:34:02
++++ include/linux/module.h	2026-10-18 23:24:31
+@@ -361,6 +361,7 @@
+ 	struct kobject *holders_dir;
+ 
+ 	/* Exported symbols */
++	char sunxi_pad[36];
+ 	const struct kernel_symbol *syms;
+ 	const s32 *crcs;
+ 	unsigned int num_syms;

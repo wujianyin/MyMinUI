@@ -1,0 +1,237 @@
+# USB Mode.pak 工作记录与后续交接文档
+
+设备:Allwinner H133/T113(sun8iw20,256MB RAM)掌机,Tina Linux 5.4.61(armv7l),SPI NOR 上的 musl 原厂 rootfs;
+MyMinUI(`m21` 平台)跑在 32GB FAT SD 卡上的 `chroot /overlay`(glibc 2.26 的 ext2 镜像,fuse2fs 挂载)里。
+宿主机:Mac。本仓库:`/Users/wujianyin/work/gitwork/MyMinUI`。
+
+> 本文档记录:最终状态 → 整体架构 → 一步步怎么做到的 → 踩过的坑与解法 → 遗留问题 / 下一步 → 环境复现与备份位置。
+
+---------------------------------------------------------------------
+
+## 1. 最终状态(截至本次结束)
+
+`/mnt/SDCARD/Tools/m21/USB Mode.pak` 是一个交互式 USB 管理工具,菜单项:
+
+| 菜单项 | 取值 | 状态 |
+|---|---|---|
+| USB Storage (SD Card) | OFF / RW / RO | 已测(早期会话) |
+| ADB Debugging | ON / OFF | 已测 |
+| USB Serial (ttyGS0) | ON / OFF | 已测(早期会话) |
+| **USB Network (192.168.7.x)** | OFF / ECM | 本次新增;功能经 shell 流程在设备上实测,**菜单 UI 本身未在设备屏幕上点过** |
+| USB Port Role | Device / OTG Host | 已测(早期会话) |
+| On Exit to MinUI | Keep / Auto eject | 已有 |
+| Boot Default | ADB only / ADB+Storage RW / ADB+Storage RO / USB Off | 开机钩子本次修复并实测(见下) |
+| **Boot USB Network** | ON / OFF | 本次新增,开机钩子实测通过 |
+| Return to MinUI | | |
+
+开机实测通过的组合(重启后检查):
+- `adb_only` + `net`:ADB 正常,Mac 上出现 "Tina ADB" 网卡,DHCP 得到 192.168.7.2,互 ping ~1ms。
+- `adb_ums_ro` + `net`:ADB + 只读 SD(Mac 上挂出 SAMSUNGDISK)+ USB 网络 三者同时可用。
+- 设备上当前开机默认已恢复为 `adb_only`(不带网络)。
+
+**未测**:`adb_ums_rw`、`off` 两种开机模式;菜单里手动切换网络(逻辑用 `t_net.sh` 在 chroot 中模拟过 off/on/up 流程,可用);
+Windows 主机(RNDIS/NCM);Linux 主机(理论可行,没试)。
+
+---------------------------------------------------------------------
+
+## 2. 文件清单与位置
+
+### 仓库内(未提交,`git status` 显示 untracked)
+- `skeleton/EXTRAS/Tools/m21/USB Mode.pak/`
+  - `launch.sh`(导出 `USBMODE_PAK_DIR`,把 umsd/usbmode 拷到 /tmp 运行)
+  - `usbmode.elf`、`umsd.elf`、`dhcpd_mini.elf`、`usbnet.sh`
+  - `modules/u_ether_x.ko`、`modules/f_ecm_x.ko`
+- `workspace/m21/other/usbmode/`
+  - `usbmode.c`(UI)、`umsd.c`(FunctionFS 存储守护进程)、`dhcpd_mini.c`、`usbnet.sh`、`crt_glibc.c`
+  - `tomato.m21`(设备上 `/mnt/SDCARD/tomato` 的当前版本)
+  - `kmod/`:`f_ecm.c`、`u_ether.c`、`Kbuild`、`build.sh`、`Dockerfile`、各 `*_pad.*`(头文件填充补丁)
+  - `README.md`(简版说明)、本文件
+
+注意:`build/FULL/m21/tomato`(构建产物)被 `.gitignore` 忽略,**tomato 的真正源文件在仓库里没找到**,
+需要把 `tomato.m21` 里 USB 相关改动合并进真实来源(见第 6 节)。
+
+### 设备(SD 卡)
+- `/mnt/SDCARD/tomato`(开机钩子,已更新;旧版备份:Desktop 的 `USB Mode.pak/tomato.before_net`)
+- `/mnt/SDCARD/Tools/m21/USB Mode.pak/*`(同仓库 skeleton 内容)
+- `/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg`
+  - 第 1 行:`adb_only | adb_ums_rw | adb_ums_ro | off`
+  - 可选第 2 行:`net`(开机启用 USB 网络)
+- `/mnt/SDCARD/usb_adb_debug.log`(开机 USB 初始化日志,排查首选)
+
+### 备份(Desktop,/tmp 会被清空!)
+`/Users/wujianyin/Desktop/mtd_dump/USB Mode.pak/`
+- 所有源码与二进制副本、`tomato.before_net`、`tomato.with_net`
+- `kmod_src/`(旧版内核模块源码与头文件补丁)
+- `build_env/`:交叉编译环境备份(`m21_glibc`(设备 glibc 2.26 库)、`sdl2_inc`、`api.o/platform.o/utils.o`、
+  `crt_glibc.c`、`device.config`(厂商 .config)、两个 Dockerfile、`tools/` 里的调试工具与脚本)
+- 另有 `/Users/wujianyin/Desktop/mtd_dump/unpacked/`:原厂 flash 解包(`vmlinux.bin`、`kallsyms.txt`、`kernel_config.txt`、`mtd4_rootfs`)
+
+---------------------------------------------------------------------
+
+## 3. 架构要点(必须先理解)
+
+1. **双 rootfs**:原厂 musl 根跑 `/bin/adbd -D`;`tomato` 用 fuse2fs 把 `rootfs.ext2` 挂到 `/overlay`,
+   再 bind 挂载 dev/proc/sys/configfs/SDCARD/tmp 后 `chroot /overlay` 运行 MinUI。
+   - 在宿主命名空间里**后挂载**的东西(如 `/dev/usb-ffs/ums` 的 functionfs)在 chroot 里看不到,
+     必须 `mount -o bind /dev/usb-ffs/ums /overlay/dev/usb-ffs/ums`。
+2. **USB gadget 用 configfs**:`/sys/kernel/config/usb_gadget/g1`,UDC 名 `4100000.udc-controller`。
+   厂商内核只内置 `gser`、`ffs`,没有 ECM/NCM/RNDIS,需要外置模块。
+3. **UDC 必须先解绑再增删 function 链接**(`echo "" > UDC`),否则新 function 不会被 bind
+   (现象:`usb0` 不出现 / `(unnamed net_device)`)。
+4. **ECM 的 netdev(`usb0`)在 UDC 绑定后才注册**,所以 IP 配置和 DHCP 必须在绑定之后做(`usbnet.sh up`)。
+5. **ADB 的 adbd 在宿主侧**(`/bin/adbd -D`),`tomato` 里有个循环保活。
+
+---------------------------------------------------------------------
+
+## 4. 本次(以及前几次会话)的实现步骤与问题解决
+
+### 4.1 USB 网络为什么不能用 FunctionFS 实现
+最初想用用户态 FunctionFS 写一个 `netd.elf` 实现 ECM。写描述符时报 `Invalid argument`:
+厂商 `f_fs.c` 只接受 HID/CCID(0x21)类特定描述符,拒绝 CDC 的 0x24。
+结论:FFS 做不了 ECM,必须用内核自带的 `f_ecm`,于是改为**交叉编译外置模块**。
+(`netd.c/.elf` 作废,仅留在 Desktop 备份中。)
+
+### 4.2 外置内核模块的构建环境
+- 下载主线 5.4.61 源码(`https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.4.61.tar.xz`),用厂商 `.config`
+  并打开 `USB_CONFIGFS_ECM/NCM/RNDIS=m`,`make modules_prepare`(见 `kmod/build.sh`)。
+- Docker 镜像 `kbuild-arm`(debian bookworm + gcc-arm-linux-gnueabihf,见 `kmod/Dockerfile`),工作目录挂载为 `/work`。
+- 编译:`make KCFLAGS="-march=armv7-a" M=/work/<dir> modules`,然后 `arm-linux-gnueabihf-strip --strip-debug`。
+- 模块名加 `_x` 后缀(`u_ether_x.ko`、`f_ecm_x.ko`)。
+
+### 4.3 结构体布局与厂商内核不一致(核心难点)
+厂商内核的若干结构体比主线多了字段,外置模块若用主线布局会读错偏移。用法:
+反汇编 `vmlinux.bin`(原始镜像,基址 `0xc0008000`):
+`arm-linux-gnueabihf-objdump -D -b binary -m arm --adjust-vma=0xc0008000 --start-address=... --stop-address=...`,
+和探针模块(`tools/offs2.c`、`skbo.c`、`gp.c`,用 `offsetof` 打印后 `objdump -s -j .rodata` 读出)对比,
+然后在 5.4.61 的头文件里加填充:
+
+| 结构体 | 头文件 | 填充 | 发现过程 / 症状 |
+|---|---|---|---|
+| `struct module` | `linux/module.h` | `char sunxi_pad[36]` 放在 `syms` 之前 | insmod 失败/异常 |
+| `struct usb_function_instance` | `linux/usb/composite.h` | `int sunxi_pad` 放在 `fd` 之后 | mkdir function 失败 |
+| `struct sk_buff` | `linux/skbuff.h` | `char sunxi_pad[16]` 放在 `headers_end[0]` 之后 | 厂商偏移 tail=168 end=172 head=176 data=180 len=84 data_len=88 mac_header=150;症状:UDC 打印 `_req is invalid`、`buf=NULL`,收发包刷屏 |
+| `struct usb_gadget` | `linux/usb/gadget.h` | `char sunxi_pad[16]` 放在 `udc` 之后;`char sunxi_pad2[184]` 放在 `dev` 之后 | **本次最后一个**:`gadget->ep0` 在厂商内核偏移 40(主线 24)→ 读到 NULL → `usb_ep_queue(NULL)` 在中断里崩溃;`mA`/标志位在厂商里是 716/725(+184) |
+
+已确认与主线一致:`net_device`、`usb_function`、`usb_configuration`、`usb_ep`、`usb_request`。
+*新增使用其它内核结构体的模块前,务必先用同样方法核对偏移*。
+
+### 4.4 `can_support_ecm()` 失败
+厂商 UDC(`sunxi_udc`)设置了 `quirk_altset_not_supp=1`,`ecm_bind` 返回 -EINVAL。
+在 `f_ecm.c` 中把 `if (!can_support_ecm(...))` 改成 `if (0 && ...)` 绕过(实测 ECM 正常工作)。
+
+### 4.5 “一启用 ECM 设备就重启”——如何定位
+症状:只要 ECM 的中断(INT)通知端点在描述符里,Mac 一枚举设备就复位(无任何崩溃文本)。
+- `panic=0`,中断上下文 oops 会一直挂到硬件看门狗复位;DRAM 重启后不保留(测过),`dmesg` 里没有崩溃信息。
+- **解法:用 RTC 通用寄存器当“黑匣子”**。RTC GP 寄存器(物理 `0x07090100 + 4*n`)的 gp0-5、gp7
+  在 `reboot -f`/看门狗复位后保留(gp6 会被清)。写了 `crashlog.ko`(`tools/crashlog.c`):
+  注册 `register_die_notifier` + panic notifier,崩溃时把 `0xdead0000|val`(含 in_interrupt 标志)、
+  `regs->ARM_pc`、`ARM_lr`、`ARM_sp`、`thread.address`、`err`、`r0` 写进 gp0-gp7;重启后 `cat /proc/crashlog`。
+  (`/proc/crashlog` 写入任意内容 = 清零;`pmem.c` 是更早的手动读写版本。)
+- 一次崩溃得到:PC=`c04403d0` = `usb_ep_queue` 第一条指令 `ldrb r3,[r0,#25]`,r0=NULL;
+  LR=`bf0a5788`(模块地址,落在 `f_ecm_x` 的 `.text.unlikely` 偏移 0x17c)= `ecm_setup` 里的
+  `usb_ep_queue(cdev->gadget->ep0,...)`。→ 追到 `gadget->ep0` 偏移不对(见 4.3 最后一行)。
+- 补上 gadget 填充后,**主线原样的 ECM(INT 通知端点 ep4、通知开启)完全稳定**。之前怀疑的“INT 端点本身有问题”“notify 使用后释放”都是误判。
+- 经验:这套 `crashlog.ko` 对以后任何“中断里崩溃、无日志”的问题都有用(从 `kallsyms.txt` 反查 PC;模块内地址用 `.ko` 的 `objdump -dr` 加上各 section 大小推算)。
+
+### 4.6 收不到包 / 刷屏问题
+- `rx_fill` 失败时会无限 `defer_kevent` 重试并刷爆 dmesg ring buffer(丢掉早期日志)。
+  调试期给 `rx_fill` 加了重试上限;**最终干净版用的是主线 u_ether.c,没有这个上限**,
+  因为 sk_buff 填充修好后不会再失败。
+- 一次测试里 Mac 发出的包设备收不到(RX=1),重启后同样的模块收发都正常 → 当时属于脚本没有按预期启动
+  (见 4.9)/状态残留,未发现代码缺陷。
+
+### 4.7 DHCP 与 IP
+- 设备 `usb0=192.168.7.1/24`。chroot 内 busybox 没有 `udhcpd`,原厂 `dnsmasq` 依赖原厂 musl 库在 chroot 里跑不了,
+  所以写了 `dhcpd_mini.c`(静态极小 DHCP 服务端:对任何客户端发 192.168.7.2,租期 3600s,只下发掩码和服务器地址;
+  不给网关/DNS)。
+- Mac 上若 VPN(utun)抢路由,ping 169.254.x.x 要用 `ping -b enNN`;有 DHCP 之后用 192.168.7.x 直接可达。
+
+### 4.8 开机钩子(tomato)的两个 bug(需求 B)
+1. 先 `setusbconfig adb` 已绑定 UDC,之后再 `ln -sf` 新 function 不会生效 → 链接前先 `echo "" > $G/UDC`
+   (UMS 与 ECM 两处都加了)。
+2. chroot 里的 `umsd.elf` 报 `open ep0: No such file or directory` → 在 chroot 目录补
+   `mount -o bind /dev/usb-ffs/ums ${ROOTFS_MOUNTPOINT}/dev/usb-ffs/ums`。
+3. ECM 绑定失败的兜底:检查 `UDC` 为空时删除 `ecm.usb0` 链接再重绑;成功则等 `usb0` 出现→配 IP→chroot 内起 `dhcpd_mini.elf`。
+4. `sh -n` 检查语法后再推到 SD;推荐每次改 tomato 都先 `adb shell sh -n /mnt/SDCARD/tomato`。
+
+### 4.9 设备端脚本/调试环境的坑(省得再踩)
+- 设备没有 `nohup`/`setsid`。后台脚本用:
+  `start-stop-daemon -b -S -m -p /tmp/x.pid -x /bin/sh -- /tmp/script.sh`。
+  它**不稳定**:同一时刻第二个 `/bin/sh` 守护通常是空操作,且 pid 文件残留时不启动(先 `rm -f /tmp/x.pid`)。
+  脚本里自己再启动日志器,且脚本里不要依赖 adb(解绑 UDC 会断 adb)。
+- 改 gadget 配置会断 adb;脚本里要有失败回滚(解绑→删新链接→重绑)。
+- **SD 卡被硬重启弄坏会变只读**(`fat_free_clusters: deleting FAT entry beyond EOF` → 文件系统只读,脚本重定向到 SD 失败,日志全丢)。
+  修复:通过 USB 把 SD 卡暴露给 Mac(`umsd` 跑 `/dev/mmcblk0`,见 `tools/umsrun.sh`),
+  Mac 上 `diskutil repairVolume /dev/diskN`(不需要 sudo),再重启。
+  调试日志写 SD 时用预分配文件 + `dd conv=notrunc`(`tools/dmlog.sh`)。
+- 设备 `/tmp` 是 tmpfs,重启即清空;Mac 的 `/tmp` 同样可能被清,**已把关键构建资产备份到 Desktop/build_env**。
+- Mac 上 `sed -i` 需要 `sed -i ''`。
+- Docker 镜像:`kbuild-arm`(内核模块)+ `kbuild-arm2`(在其上加 `libc6-dev-armhf-cross`,用于编译用户态程序;见 `build_env/Dockerfile.arm2`)。
+
+### 4.10 用户态程序(usbmode / umsd / dhcpd_mini)的编译方式
+(早前的编译命令没有保存,这次重新摸索出来,**按这个就能复现**)
+```
+docker run --rm -v /tmp:/t -v <MyMinUI>/workspace:/w kbuild-arm2 bash -c '
+cd /t && arm-linux-gnueabihf-gcc -O2 -marm -march=armv7-a -mfpu=neon -mfloat-abi=hard \
+  -fomit-frame-pointer -fno-pie -no-pie -nostartfiles -DPLATFORM=\"m21\" -DUSE_SDL2 \
+  -I/w/all/common -I/w/m21/platform -I/w/m21/libmsettings -I/t/sdl2_inc -I/t/sdl2_inc/SDL2 \
+  usbmode.c api.o platform.o utils.o crt_glibc.c -o usbmode.elf \
+  -L/t/m21_glibc -lSDL2 -lSDL2_image -lSDL2_ttf -lmsettings -lsamplerate -lpthread -ldl -lm -lz \
+  -l:libc.so.6 -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3 -Wl,--allow-shlib-undefined
+arm-linux-gnueabihf-strip usbmode.elf'
+```
+要点:
+- 必须 `-no-pie -fno-pie -marm`(Debian 默认 PIE;`crt_glibc.c` 的自定义 `_start` 汇编要 ARM 模式)。
+- 链接对象是设备 glibc 2.26 的库(`m21_glibc/`),但头文件来自 Debian 的 `libc6-dev-armhf-cross`;`crt_glibc.c` 提供 `_start` 和 `__errno` 适配,避免依赖新版 glibc 符号。
+- `api.o/platform.o/utils.o` 是之前编好的 MyMinUI 公共对象(备份在 `build_env`);若要重编,从
+  `workspace/all/common/{api,utils}.c` 和 `workspace/m21/platform/platform.c` 编译(参考 `workspace/all/clock/makefile` 的 CFLAGS)。
+- 也可以改用仓库自带的 `toolchains/m21-toolchain`(`make PLATFORM=m21 toolchain` 一类流程,Docker 镜像需要先构建;本次没走这条路)。
+- `dhcpd_mini` 用相同方式编译,只需 `crt_glibc.c` 和 `-l:libc.so.6`。
+
+---------------------------------------------------------------------
+
+## 5. 部署与回归测试清单(以后改动后照此验证)
+
+1. 编译 → `adb push` 到 `/mnt/SDCARD/Tools/m21/USB Mode.pak/`(`chmod +x`)。
+2. 开机钩子:写 `usb_boot_mode.cfg`,`sync`,`adb reboot`,等待 ~60s:
+   - `ls /sys/kernel/config/usb_gadget/g1/configs/c.1`(应见 `ffs.adb`、可选 `ffs.ums`、`ecm.usb0`)
+   - `cat /sys/kernel/config/usb_gadget/g1/UDC`(应为 `4100000.udc-controller`)
+   - `ifconfig usb0`、`ps | grep -E "umsd|dhcpd_mini"`、`cat /tmp/umsd.log`、`/mnt/SDCARD/usb_adb_debug.log`
+   - Mac:`networksetup -listallhardwareports | grep -A1 Tina`、`ifconfig enNN`(应有 192.168.7.2)、`ping 192.168.7.1`、`ls /Volumes`
+3. 模拟菜单切换(不用点屏幕):见 `tools/ecmtest.sh` 的写法;或 `chroot /overlay sh "<pak>/usbnet.sh" off|on|up` 配合先解绑/后绑定 UDC。
+4. 改内核模块前先用探针确认结构体偏移(4.3);崩溃无日志时用 `crashlog.ko`(4.5)。
+
+---------------------------------------------------------------------
+
+## 6. 遗留问题 / 下一步(按优先级)
+
+1. **提交到仓库**:`skeleton/.../USB Mode.pak/` 和 `workspace/m21/other/usbmode/` 目前是 untracked。
+   并且把 `tomato.m21` 里的 USB 改动合并到 tomato 的真实源文件(仓库内只找到被忽略的 `build/FULL/m21/tomato`,
+   需要确认它由哪个文件/脚本生成:可从 `makefile` 里的 `m21` 目标和 `skeleton/BASE` 追查)。
+2. **在设备屏幕上实测菜单**:新增的 USB Network / Boot USB Network 两项、状态栏文案、与 Storage/ADB/Serial 的组合切换;
+   以及“绑定失败自动回退”分支(`usbmode.c` 里 `cur_net` 失败路径)。
+3. **补测开机模式** `adb_ums_rw`、`off`;以及 `adb_ums_ro/rw` + `net` 之外的组合(例如 serial + net)。
+4. **端点资源上限**:UDC 只有 ep1/ep2/ep5 三对 bulk + ep4 interrupt + ep3 iso。
+   ADB(1 对)+ UMS(1 对)+ ECM 数据(1 对)+ ECM 通知(ep4)刚好用满;再加 `gser`(需要 1 对 bulk + 1 个 INT)大概率放不下,
+   需要在菜单里做互斥/提示,或实测。
+5. **Windows / Linux 主机**:模块 `f_rndis_x.ko`、`f_ncm_x.ko` 已能用同样方法编译(`kmod/Kbuild` 里已有),
+   但没有在设备上加载测过,也没放进 pak、菜单没有入口。RNDIS 还会用到 `rndis.c`,
+   上机前要重新核对相关结构体偏移。Linux 主机的 `cdc_ether` 理论可用。
+6. **共享上网(NAT)**:目前只有点对点局域网,不下发网关/DNS,也没有转发。需要的话:`dhcpd_mini` 增加 router/DNS 选项 +
+   设备侧 `iptables` MASQUERADE(设备上有 iptables 模块)。
+7. **DHCP 服务**:只有一个固定租约(192.168.7.2),不管 xid 之外的状态,没有 ARP 检查;多主机场景不适用。
+8. **清理**:设备 SD 根目录若有遗留的调试文件(`dm.bin`、`nettest.log` 已删),`/mnt/SDCARD/usb_adb_debug.log` 每次开机会覆盖,无需处理;
+   仓库里 `kmod/*_pad.txt` 是完整头文件拷贝(体积大),可改成精简 diff。
+9. **构建可复现性**:5.4.61 源码树现在在 `/tmp/kbuild/linux-5.4.61`(会丢)。重建步骤:
+   下载源码 → 拷厂商 `device.config` 为 `.config` → 打开三个 `USB_CONFIGFS_*=m` → `make olddefconfig modules_prepare`
+   → 按 4.3 表手动加填充(或套用 `kmod/*_pad.*`)→ 编译 `kmod/`。建议后续把填充做成真正的 `.patch` 文件放进仓库。
+10. **安全提示**:SD 卡以 RW 暴露给电脑的同时设备自己也在用,有损坏风险;菜单默认退出时会自动弹出存储。硬重启后 SD 若变只读,按 4.9 修复。
+
+---------------------------------------------------------------------
+
+## 7. 速查
+
+- 进设备:`adb shell`;设备 `usb0=192.168.7.1`;Mac 端网卡名通常是 `en16`("Tina ADB"),随接口变化。
+- 读崩溃黑匣子:`insmod /tmp/crashlog.ko; cat /proc/crashlog`(PC 反查:`tr -d '\r' < kallsyms.txt | sort`,找 ≤PC 的最近符号)。
+- 反汇编厂商内核:见 4.3 的 objdump 命令(在 `kbuild-arm` 容器里跑,Mac 没有 arm objdump)。
+- 重新给 gadget 加链接的标准顺序:`echo "" > UDC` → 增删 `configs/c.1/*` 链接 → `echo 4100000.udc-controller > UDC` → 校验 UDC 非空 → 配 IP。
