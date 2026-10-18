@@ -64,8 +64,9 @@
 - 🟡 USB Mode 菜单(新增的两项)还没有在设备屏幕上实际操作验证;`adb_ums_rw`、`off` 开机模式未单独重启测试。
 - 🟡 仅在 macOS 上验证了 USB 网络。**Windows(RNDIS/NCM)** 模块已能编译,但未上机测试,也没放进 pak。
 - 🟡 USB 端点有限(3 对 bulk + 1 个 interrupt):ADB + 存储 + 网络刚好用满,再叠加 USB Serial 大概率放不下,尚未做互斥/提示。
-- 🟡 设备本身**没有 WiFi 硬件/驱动**,上外网只能靠宿主机共享;设备端自带的 `curl` 编译时没有任何协议(`Protocols:` 为空),
-  `https`/`http` 都会报 `Protocol not supported`,测试请用 `ping`/`nc`(见 NOTES.md)。
+- 🟡 设备本身**没有 WiFi 硬件/驱动**,上外网只能靠宿主机共享(Mac 上已实测可上外网);设备端自带的 `curl` 编译时没有任何协议(`Protocols:` 为空),
+  `https`/`http` 都会报 `Protocol not supported`,自带 `nc` 也不发数据;测试请用 `ping` 或 `chroot /overlay /bin/busybox wget`(见 NOTES.md)。
+- ✅ 已修复:USB 网络大帧(>512 字节)收发损坏——原因是 sunxi UDC 的 DMA 要求 4 字节对齐,`u_ether` 的 `NET_IP_ALIGN` 让数据偏移了 2 字节(NOTES.md §6.2)。
 - 🟡 `dhcpd_mini` 只发一个固定租约(192.168.7.2),不下发网关/DNS;设备端的默认路由/DNS 由 `usbnet.sh up`(和 `tomato`)直接设置。
 - 🟡 仓库里 `tomato` 的真实来源文件还没找到(构建目录 `build/FULL/m21/tomato` 被 `.gitignore` 忽略),
   目前 `tomato.m21` 只是设备上那一份的拷贝,需要合并回真正的来源。

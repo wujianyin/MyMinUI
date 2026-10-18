@@ -558,6 +558,21 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		}
 	}
 
+	/* sunxi UDC DMA reads from skb->data directly and needs a 4-byte aligned
+	 * buffer; the stack hands us NET_IP_ALIGN(2)-offset skbs, which corrupts
+	 * large (DMA) transfers.  Copy into an aligned skb when needed. */
+	if ((unsigned long)skb->data & 3) {
+		struct sk_buff *nskb = __netdev_alloc_skb(net, skb->len, GFP_ATOMIC);
+
+		if (!nskb) {
+			dev_kfree_skb_any(skb);
+			goto drop;
+		}
+		skb_put_data(nskb, skb->data, skb->len);
+		dev_kfree_skb_any(skb);
+		skb = nskb;
+	}
+
 	length = skb->len;
 	req->buf = skb->data;
 	req->context = skb;
@@ -1075,7 +1090,9 @@ struct net_device *gether_connect(struct gether *link)
 
 	if (result == 0) {
 		dev->zlp = link->is_zlp_ok;
-		dev->no_skb_reserve = gadget_avoids_skb_reserve(dev->gadget);
+		/* sunxi UDC DMA needs a 4-byte aligned rx buffer; skb_reserve(NET_IP_ALIGN)
+		 * made frames arrive shifted by 2 bytes (large/DMA frames corrupted). */
+		dev->no_skb_reserve = true;
 		DBG(dev, "qlen %d\n", qlen(dev->gadget, dev->qmult));
 
 		dev->header_len = link->header_len;

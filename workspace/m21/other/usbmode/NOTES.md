@@ -241,11 +241,27 @@ arm-linux-gnueabihf-strip usbmode.elf'
     `nat on <出口> from 192.168.7.0/24 to any -> (<出口>)`(系统默认 `/etc/pf.conf` 有 `nat-anchor "com.apple/*"`,不会替换主规则集)。
     出口接口自动取 `route -n get 8.8.8.8`;开着 VPN 时是 `utunN`,不通就断开 VPN 或手动指定 Wi-Fi 接口。需要 sudo。
   - `share-internet-linux.sh on|off`:iptables MASQUERADE + FORWARD。
-- **验证状态**:设备端实测(路由/DNS 正确,`ping 192.168.7.2` 通,`ping 8.8.8.8` 从 Network unreachable 变为 100% loss,说明包已送往 Mac)。
-  宿主端 NAT 脚本需要 sudo,我这边没有 sudo 权限,只做了 `sh -n`、`DRYRUN=1` 和 `pfctl -n` 语法检查,**尚未在真机上跑通外网**。
-  下一步:`sudo host-tools/share-internet-macos.sh on` 后在设备上测 `ping 8.8.8.8`、`ping www.baidu.com`、`nc www.baidu.com 80`。
+- **验证状态(已在真机跑通)**:Mac 端 `share-internet-macos.sh on` 后,设备 `ping 8.8.8.8`、`ping www.baidu.com` 通;
+  `chroot /overlay /bin/busybox wget -qO- http://www.baidu.com` 能取回页面(chroot 里的 busybox `wget` 可用,原厂的会段错误);
+  1MB 文件下载 md5 一致。设备自带 `nc` 过于简陋(不发数据),不要用它测 HTTP。
 - 未做:菜单里的"共享上网"开关(目前只要 USB 网络开着就设置路由/DNS,宿主不 NAT 时无害);Windows 请用系统自带"Internet 连接共享";
   `dhcpd_mini` 仍不下发网关/DNS。
+
+---------------------------------------------------------------------
+
+## 6.2 大帧(>512 字节)收发损坏——已修复(`u_ether.c`)
+- **现象**:ping/小 HTTP 正常,但大文件下载超时、`ping -s 600` 以上 100% 丢包;`usb0` 的 `RX dropped`/`errors` 一直涨;
+  把 MTU 调到 ≤400 能下载,480 左右出现 md5 不一致,540 以上失败。
+- **定位**:给 `rx_complete` 加调试日志(见下),收到的帧目的 MAC 变成 `03:74:ab:40:ce:34`(正确应为 `d2:59:03:74:ab:40`),
+  即**内容整体前移了 2 字节**,`eth_type_trans` 得到未知协议被当作 `rx_dropped`。小包走 PIO 没事,大包走 DMA 才出问题。
+- **根因**:sunxi UDC 的 DMA 要求 4 字节对齐的缓冲区,而 `u_ether` 默认 `skb_reserve(NET_IP_ALIGN=2)`(RX)以及协议栈给的
+  skb->data 偏移 2(TX)都使缓冲区地址不对齐,DMA 从对齐边界开始读写,数据偏移 2 字节。
+- **修复**(`kmod/u_ether.c`):RX 强制 `dev->no_skb_reserve = true`;TX 在 `usb_ep_queue` 前若 `skb->data & 3` 则拷贝到对齐的新 skb。
+  修复后 1MB 下载 md5 与源一致(两次),`ping -s 1400` 双向通,`RX/TX errors/dropped = 0`。
+- **调试方法**:在 `rx_complete` 里对 ethertype 不是 0800/0806/86dd 的帧 `pr_info` 出长度和 MAC;模块放进 pak 的 `modules/` 后重启
+  (用 `usb_boot_mode.cfg` 第二行 `net` 开机即带网络)。**不要在 `adb shell` 里直接解绑 UDC**(adb 自己就跑在这个 gadget 上,脚本会被杀掉,
+  设备会一直处于未绑定状态需要重启);需要运行时切换就用 `(trap "" HUP; script &)` 放到后台。设备上没有 `setsid`/`nohup`。
+  也不要在运行中 `rmmod f_ecm_x`/`u_ether_x`——会导致无日志的硬复位(`crashlog.ko` 也记不到),直接替换 `.ko` 后重启。
 
 ---------------------------------------------------------------------
 
