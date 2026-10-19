@@ -365,3 +365,7 @@ arm-linux-gnueabihf-strip usbmode.elf'
 - `host-tools/share-internet-windows.ps1 on|off|status`(`.bat` 双击会自动要管理员权限):自动找 192.168.7.x 的适配器和有默认路由的出口,
   两者 `Set-NetIPInterface -Forwarding Enabled`,再 `New-NetNat -Name USBShare -InternalIPInterfaceAddressPrefix 192.168.7.0/24`。
   可能的失败:与 WSL/Docker/Hyper-V 的 NAT 网段重叠、`winnat` 服务未运行、出口是 VPN 虚拟网卡(用 `-Uplink` 指定)。**该脚本未在真机 Windows 上验证。**
+- **实测(Windows 家庭版)**:`New-NetNat` 报“无效类”(缺少 NetNat 的 WMI 类)。脚本因此自动回退到 ICS:
+  先写注册表 `HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters` 的 `ScopeAddress`/`ScopeAddressBackup`/`StandaloneDhcpAddress`=192.168.7.2(默认 192.168.137.1),
+  停 `SharedAccess` 服务后用 `HNetCfg.HNetShare` COM 接口给上网网卡 `EnableSharing(0)`、给 USB 网卡 `EnableSharing(1)`,USB 网卡会被设成静态 192.168.7.2,与设备默认网关一致。
+  `off` 会关闭共享、删掉这三个注册表值、把 USB 网卡改回 DHCP。**ICS 回退方式尚未在真机验证。**
