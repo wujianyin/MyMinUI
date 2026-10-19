@@ -59,6 +59,7 @@ int main(int argc, char **argv)
             if (*o == 53) type = o[2];
             o += 2 + o[1];
         }
+        fprintf(stderr, "dhcp rx type=%d len=%d xid=%08x\n", type, (int)n, ntohl(m.xid));
         if (type != 1 && type != 3) continue;
         memset(&r, 0, sizeof(r));
         r.op = 2; r.htype = m.htype; r.hlen = m.hlen; r.xid = m.xid; r.flags = m.flags;
@@ -72,6 +73,7 @@ int main(int argc, char **argv)
         *p++ = 255;
         struct sockaddr_in d = { .sin_family = AF_INET, .sin_port = htons(68) };
         d.sin_addr.s_addr = INADDR_BROADCAST;
-        sendto(s, &r, (char *)p - (char *)&r, 0, (struct sockaddr *)&d, sizeof(d));
+        ssize_t w = sendto(s, &r, (char *)p - (char *)&r, 0, (struct sockaddr *)&d, sizeof(d));
+        fprintf(stderr, "dhcp tx type=%d -> %d\n", t, (int)w);
     }
 }

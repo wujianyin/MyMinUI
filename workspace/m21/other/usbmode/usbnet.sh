@@ -4,9 +4,25 @@
 #   usbnet.sh off                    remove every network function from the config
 #   usbnet.sh up                     after the UDC is bound: configure usb0 + DHCP server
 #   usbnet.sh serial on|off          CDC-ACM serial (ttyGS0); Windows/macOS/Linux all have a driver
-# ecm = Mac/Linux, ncm = Mac/Linux/Windows 11, rndis = Windows (all versions)/Linux.
+# ecm = Mac/Linux, ncm = Mac/Linux/Windows 11, rndis = Windows 10/Linux (via MS OS compatible ID).
 G=/sys/kernel/config/usb_gadget/g1
 DIR="$(cd "$(dirname "$0")" && pwd)"
+# Windows 10/11 RNDIS: the class-based "Internet Sharing" driver (E0/01/03) fails to start on this UDC, so use the
+# classic MS OS compatible-ID route (USB\MS_COMP_RNDIS) with the default CDC/ACM/vendor function class.
+# bcdDevice is bumped while enabled because Windows caches "has MS OS descriptors" per VID/PID/bcdDevice.
+osdesc_on() {
+	echo 02 > $G/functions/rndis.usb0/class; echo 02 > $G/functions/rndis.usb0/subclass; echo ff > $G/functions/rndis.usb0/protocol
+	echo 1 > $G/os_desc/use; echo 0xcd > $G/os_desc/b_vendor_code; echo MSFT100 > $G/os_desc/qw_sign
+	echo RNDIS > $G/functions/rndis.usb0/os_desc/interface.rndis/compatible_id
+	echo 5162001 > $G/functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id
+	[ -e $G/os_desc/c.1 ] || ln -s $G/configs/c.1 $G/os_desc/c.1
+	echo 0x0511 > $G/bcdDevice
+}
+osdesc_off() {
+	rm -f $G/os_desc/c.1
+	echo 0 > $G/os_desc/use 2>/dev/null
+	echo 0x0504 > $G/bcdDevice
+}
 load_ether() { lsmod | grep -q '^u_ether_x' || insmod "$DIR/modules/u_ether_x.ko" || exit 1; }
 case "$1" in
 on)
@@ -14,16 +30,22 @@ on)
 	load_ether
 	lsmod | grep -q "^f_${T}_x" || insmod "$DIR/modules/f_${T}_x.ko" || exit 1
 	[ -d $G/functions/$T.usb0 ] || mkdir $G/functions/$T.usb0 || exit 1
-	if [ "$T" = rndis ]; then   # Windows binds its inbox RNDIS driver by class E0/01/03
-		echo e0 > $G/functions/rndis.usb0/class
-		echo 01 > $G/functions/rndis.usb0/subclass
-		echo 03 > $G/functions/rndis.usb0/protocol
-	fi
+	if [ "$T" = rndis ]; then osdesc_on; else osdesc_off; fi
 	rm -f $G/configs/c.1/ecm.usb0 $G/configs/c.1/ncm.usb0 $G/configs/c.1/rndis.usb0
-	ln -sf $G/functions/$T.usb0 $G/configs/c.1/$T.usb0
+	if [ "$T" = rndis ]; then
+		# Windows' RNDIS driver only starts when RNDIS is the FIRST function (interfaces 0/1; Android does the same):
+		# re-link the other functions after it (interface numbers follow link order)
+		SAVED=$(ls $G/configs/c.1 | grep -E '^(ffs\.|acm\.|gser\.)')
+		for f in $SAVED; do rm -f $G/configs/c.1/$f; done
+		ln -sf $G/functions/rndis.usb0 $G/configs/c.1/rndis.usb0
+		for f in $SAVED; do ln -sf $G/functions/$f $G/configs/c.1/$f; done
+	else
+		ln -sf $G/functions/$T.usb0 $G/configs/c.1/$T.usb0
+	fi
 	;;
 off)
 	rm -f $G/configs/c.1/ecm.usb0 $G/configs/c.1/ncm.usb0 $G/configs/c.1/rndis.usb0
+	osdesc_off
 	killall dhcpd_mini.elf 2>/dev/null
 	ip route del default via 192.168.7.2 2>/dev/null
 	;;

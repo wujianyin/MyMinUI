@@ -1,7 +1,7 @@
 # USB Mode.pak (m21 / Allwinner H133, Tina 5.4.61 vendor kernel)
 
 Items: USB Storage (OFF/RW/RO), ADB, USB Serial (CDC-ACM), USB Network (OFF / +Internet / local) with a
-Network Type selector (ECM = Mac/Linux, NCM = Mac/Linux/Win11, RNDIS = Windows), USB Host (OTG) sub page,
+Network Type selector (ECM = Mac/Linux, NCM = Mac/Linux/Win11, RNDIS = Windows 10/11; RNDIS is placed first in the config and uses MS OS compatible-ID descriptors), USB Host (OTG) sub page,
 Boot Default (+ Boot USB Network).
 
 Serial and Network are mutually exclusive: the UDC has a single interrupt endpoint. When either is on,
@@ -45,3 +45,5 @@ Build: `make KCFLAGS="-march=armv7-a" M=<dir with kmod/*> modules`, then `strip 
 The host must NAT: `host-tools/share-internet-macos.sh on` (sudo, pf anchor `com.apple/250.usbshare`) or
 `share-internet-linux.sh on`. Then on the device: `ping -c3 8.8.8.8`, `ping -c3 www.baidu.com`,
 `printf 'GET / HTTP/1.0\r\nHost: www.baidu.com\r\n\r\n' | nc www.baidu.com 80 | head -5` (adb shell; the stock curl has no protocols).
+
+`kmod/f_rndis.patch`: Call Management `bDataInterface` = real data interface (mainline hardcodes 1). `kmod/f_ncm.patch`: `can_support_ecm` bypass.

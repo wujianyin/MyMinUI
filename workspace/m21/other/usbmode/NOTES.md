@@ -345,3 +345,16 @@ arm-linux-gnueabihf-strip usbmode.elf'
 - **已验证(Mac)**:`f_acm_x` 出现 `/dev/cu.usbmodemXXXX`,双向收发正常;NCM 自动获取 192.168.7.2、ping 1400 字节、8000 字节分片正常;ECM 回归正常;
   开机路径(`usb_nettype`=ncm / rndis)均已重启验证。RNDIS 在 Mac 上只能验证枚举和描述符(类 e0/01/03、设备类 EF/02/01),**真正的 Windows 驱动绑定待用户验证**。
 - **测试小技巧**:从 adb 里改 gadget 要先 `echo "" > UDC`,脚本必须后台运行且**用 `usleep` 而不是 `sleep`**(解绑后 stock 的 `sleep` 会被连带杀掉,脚本中途消失);用 `(trap "" HUP; sh script &)` 启动。
+
+## 7.1 RNDIS 在 Windows(11)上的真正条件——已验证
+排查过程:设备管理器先后出现“基于远程 NDIS 的 Internet 共享设备”(class E0/01/03 路线)和“远程 NDIS 兼容设备”(MS OS 兼容 ID 路线),都是**代码 10**,
+设备端 `rndis_setup` 一次都没被调用(Windows 在 SET_CONFIGURATION 之后对设备完全没有请求)。最终有效的修改:
+1. **RNDIS 必须是配置里的第一个功能(接口 0/1)**:`ffs.adb` 在前(RNDIS 在 1/2)必代码 10;RNDIS 在前立刻正常(Android 的 rndis,adb 也是这个顺序)。
+   configfs 的接口号按 `configs/c.1/` 里**创建软链接的顺序**分配,所以 `usbnet.sh on rndis` 和 `tomato` 在建 `rndis.usb0` 链接前先删掉 ffs/acm 链接,建完 RNDIS 再按原样补回。
+2. `f_rndis.c` 主线把 CDC Call Management 描述符的 `bDataInterface` 写死为 1,RNDIS 不在接口 0/1 时与 Union 描述符不一致,已改为实际数据接口号(`kmod/f_rndis.patch`)。
+3. 走 MS OS 兼容 ID 路线(`os_desc`: `use=1`、`b_vendor_code=0xcd`、`qw_sign=MSFT100`、`rndis.usb0/os_desc/interface.rndis/compatible_id=RNDIS`、`sub_compatible_id=5162001`,
+   并 `ln -s configs/c.1 os_desc/c.1`),函数 class/subclass/protocol 保持默认 02/02/ff;`bcdDevice` 改为 0x0511(Windows 按 VID/PID/REV 缓存“有无 MS OS 描述符”)。其它模式 `osdesc_off` 恢复 0x0504。
+- 注意:`dhcpd_mini.elf` 是 glibc 程序,只能在 `chroot /overlay` 里运行。从 `adb shell` 直接跑 `usbnet.sh up` 会报 `/tmp/dhcpd_mini.elf: not found`(Windows 会得到 169.254);菜单里的操作在 chroot 内,没问题。
+  测试时用 `chroot /overlay /tmp/dhcpd_mini.elf usb0 192.168.7.1 192.168.7.2`(先把文件拷到 `/overlay/tmp`)。`dhcpd_mini` 现在把收发的 DHCP 报文写到 stderr(即 `/tmp/dhcpd.log`)。
+- 调试手段:在 `f_rndis.c` 的 `rndis_setup`/`rndis_command_complete`/`rndis_set_alt` 里加 `pr_info`;UDC 的 `queue_debug`、`irq_debug`(`/sys/devices/platform/soc@3000000/4100000.udc-controller/`)写 1 可看 ep 队列和中断;
+  Mac 上用 libusb 可以读配置描述符、MS OS 字符串/兼容 ID,并手动发 RNDIS INIT(`SEND/GET_ENCAPSULATED_*`)验证设备端控制通路。

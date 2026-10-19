@@ -1,0 +1,10 @@
+--- /tmp/kbuild/mod/f_rndis.c.orig	2026-10-20 00:00:23
++++ /tmp/kbuild/mod/f_rndis.c	2026-10-20 00:40:59
+@@ -737,6 +737,7 @@
+ 	rndis->data_id = status;
+ 
+ 	rndis_data_intf.bInterfaceNumber = status;
++	call_mgmt_descriptor.bDataInterface = status; /* mainline hardcodes 1; wrong when RNDIS is not interfaces 0/1 (e.g. after ffs.adb) */
+ 	rndis_union_desc.bSlaveInterface0 = status;
+ 
+ 	status = -ENODEV;

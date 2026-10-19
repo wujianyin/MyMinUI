@@ -178,13 +178,25 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 			if lsmod | grep -q "^f_${BOOT_NETTYPE}_x"; then
 				mkdir -p "$G/functions/${BOOT_NETTYPE}.usb0" 2>/dev/null
 				if [ "$BOOT_NETTYPE" = "rndis" ]; then
-					echo e0 > "$G/functions/rndis.usb0/class"
-					echo 01 > "$G/functions/rndis.usb0/subclass"
-					echo 03 > "$G/functions/rndis.usb0/protocol"
+					# Windows: MS OS compatible-ID route (see usbnet.sh osdesc_on)
+					echo 02 > "$G/functions/rndis.usb0/class"; echo 02 > "$G/functions/rndis.usb0/subclass"; echo ff > "$G/functions/rndis.usb0/protocol"
+					echo 1 > "$G/os_desc/use"; echo 0xcd > "$G/os_desc/b_vendor_code"; echo MSFT100 > "$G/os_desc/qw_sign"
+					echo RNDIS > "$G/functions/rndis.usb0/os_desc/interface.rndis/compatible_id"
+					echo 5162001 > "$G/functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id"
+					[ -e "$G/os_desc/c.1" ] || ln -s "$G/configs/c.1" "$G/os_desc/c.1"
+					echo 0x0511 > "$G/bcdDevice"
 				fi
 				# interface association descriptors: Windows needs device class EF/02/01
 				echo 0xEF > "$G/bDeviceClass"; echo 0x02 > "$G/bDeviceSubClass"; echo 0x01 > "$G/bDeviceProtocol"
-				ln -sf "$G/functions/${BOOT_NETTYPE}.usb0" "$G/configs/c.1/${BOOT_NETTYPE}.usb0" 2>/dev/null && BOOT_USB_NET=1
+				if [ "$BOOT_NETTYPE" = "rndis" ]; then
+					# Windows' RNDIS driver needs RNDIS as the first function: re-link ffs.* after it
+					SAVED=$(ls "$G/configs/c.1" | grep -E '^(ffs\.|acm\.|gser\.)')
+					for f in $SAVED; do rm -f "$G/configs/c.1/$f"; done
+					ln -sf "$G/functions/rndis.usb0" "$G/configs/c.1/rndis.usb0" 2>/dev/null && BOOT_USB_NET=1
+					for f in $SAVED; do ln -sf "$G/functions/$f" "$G/configs/c.1/$f"; done
+				else
+					ln -sf "$G/functions/${BOOT_NETTYPE}.usb0" "$G/configs/c.1/${BOOT_NETTYPE}.usb0" 2>/dev/null && BOOT_USB_NET=1
+				fi
 			fi
 		fi
 		UDC_NAME=$(ls /sys/class/udc 2>/dev/null | head -n 1)
