@@ -310,3 +310,12 @@ arm-linux-gnueabihf-strip usbmode.elf'
 - 读崩溃黑匣子:`insmod /tmp/crashlog.ko; cat /proc/crashlog`(PC 反查:`tr -d '\r' < kallsyms.txt | sort`,找 ≤PC 的最近符号)。
 - 反汇编厂商内核:见 4.3 的 objdump 命令(在 `kbuild-arm` 容器里跑,Mac 没有 arm objdump)。
 - 重新给 gadget 加链接的标准顺序:`echo "" > UDC` → 增删 `configs/c.1/*` 链接 → `echo 4100000.udc-controller > UDC` → 校验 UDC 非空 → 配 IP。
+
+
+### ext4 U 盘(fuse2fs)
+- 内核没有 ext4(`CONFIG_EXT4_FS` 未开),但原厂侧 SD 卡上自带 musl 版 `fuse2fs`(1.43.7)和库(`/mnt/SDCARD/m21/{binmusl,libmusl}`),
+  /overlay 本身就是用它挂的 `rootfs.ext2`,`fuse.ko` 已加载。
+- chroot 里的 glibc 库与 musl 冲突,所以守护进程通过 init 的根目录起 stock loader:
+  `/proc/1/root/lib/ld-musl-armhf.so.1 --library-path /mnt/SDCARD/m21/libmusl:/proc/1/root/usr/lib:/proc/1/root/lib /mnt/SDCARD/m21/binmusl/fuse2fs <dev> <mnt> -o rw,noatime`(失败回退 ro)。
+  用 64MB ext4 镜像在设备 chroot 内实测读写正常。
+- 限制:fuse2fs 1.43 不写日志(journal);需要日志恢复的盘会挂载失败(界面显示 fuse2fs 的错误行),需在电脑上 fsck。

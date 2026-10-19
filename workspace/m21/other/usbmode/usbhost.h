@@ -185,7 +185,7 @@ static const char *uh_probe_fs(const char *dev, char *why, size_t whyn) {
     if (!memcmp(b + 3, "NTFS    ", 8)) return "ntfs";
     if (!memcmp(b + 0x52, "FAT32   ", 8) || !memcmp(b + 0x36, "FAT", 3) || (b[510] == 0x55 && b[511] == 0xaa && b[0] == 0xeb && b[2] == 0x90 && b[0x0d] != 0))
         return "vfat";
-    if (b[1024 + 0x38] == 0x53 && b[1024 + 0x39] == 0xef) { snprintf(why, whyn, "ext2/3/4 not supported"); return NULL; }
+    if (b[1024 + 0x38] == 0x53 && b[1024 + 0x39] == 0xef) return "ext4";   /* ext2/3/4 via fuse2fs */
     snprintf(why, whyn, "unknown filesystem");
     return NULL;
 }
@@ -252,6 +252,26 @@ static void uh_try_mount(UhMnt *m, unsigned now) {
     const char *fs = uh_probe_fs(dev, why, sizeof(why));
     if (!fs) { snprintf(m->err, sizeof(m->err), "%s", why); return; }
     mkdir("/mnt", 0777); mkdir("/mnt/SDCARD", 0777); mkdir(UH_MNT_ROOT, 0777); mkdir(m->mnt, 0777);
+    if (!strcmp(fs, "ext4")) {
+        /* The kernel has no ext4. The stock side ships a musl fuse2fs + libs on the SD card; we run
+         * inside a glibc chroot, so start it with the stock loader/libs through init's root. */
+        static const char *modes[] = { "rw", "ro" };
+        for (int k = 0; k < 2 && !m->mounted; k++) {
+            char cmd[512];
+            snprintf(cmd, sizeof(cmd),
+                "R=/proc/1/root; $R/lib/ld-musl-armhf.so.1 --library-path /mnt/SDCARD/m21/libmusl:$R/usr/lib:$R/lib "
+                "/mnt/SDCARD/m21/binmusl/fuse2fs %s %s -o %s,noatime >/tmp/fuse2fs.err 2>&1", dev, m->mnt, modes[k]);
+            system(cmd);
+            if (uh_proc_mounted(m->mnt, NULL, 0)) { m->mounted = 1; snprintf(m->fs, sizeof(m->fs), "ext4%s", k ? " ro" : ""); m->err[0] = 0; return; }
+        }
+        {
+            char eb[96] = "";
+            uh_read_str("/tmp/fuse2fs.err", eb, sizeof(eb));
+            for (char *c = eb; *c; c++) if (*c == '\n') { *c = 0; break; }
+            snprintf(m->err, sizeof(m->err), "ext4: %s", eb[0] ? eb : "fuse2fs failed");
+        }
+        return;
+    }
     if (mount(dev, m->mnt, fs, MS_NOATIME, NULL) == 0 ||
         (errno != EBUSY && mount(dev, m->mnt, fs, MS_NOATIME | MS_RDONLY, NULL) == 0)) {
         m->mounted = 1; snprintf(m->fs, sizeof(m->fs), "%s", fs); m->err[0] = 0;
