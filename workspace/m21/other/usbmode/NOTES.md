@@ -269,6 +269,23 @@ arm-linux-gnueabihf-strip usbmode.elf'
 
 ---------------------------------------------------------------------
 
+## 6.3 OTG 主机模式 / U 盘(后续补充)
+- **Type-C 口不输出 5V(硬件/设备树限制)**:`usbc0` 节点 `usb_port_type=0`(纯设备口)、没有 `usb_id_gpio`、`usb_det_vbus_gpio`,
+  整个设备树里没有 `usb_drv_vbus_gpio`;`ehci0/ohci0` 的 `drvvbus-supply` 指向 `usb1-vbus`,但它是没有 `gpio` 属性的
+  `regulator-fixed`(空壳)。实测切到主机模式只是该稳压器 users 计数 +1,没有任何引脚动作,转接器指示灯不亮。
+  (板上是否有未在设备树里声明的升压电路未排除;要确认需读 GPIO 寄存器或量 VBUS。)
+- **带外部供电的 hub 可用**:`usbhost_test.sh`(本目录,拷到 SD 卡后后台运行,会切 host→等待→切回 device)实测:hub(2148:7022)、
+  SanDisk U 盘(0781:5591)被识别为 `sda/sda1`(FAT32,28.6GiB);hub 上的 Realtek RTL8152 USB 网卡(0bda:8152)也被枚举,
+  但内核没有对应驱动(`CONFIG_USB_NET_DRIVERS` 未开,可考虑补编 `r8152` 做有线网络)。内核有 usb-storage、SCSI 磁盘、vfat、exfat、ntfs(只读驱动),没有 ext4。
+- **原厂 rootfs 会自动挂载 U 盘**:`/etc/hotplug.d/block/10-mount` + `/etc/config/fstab` 把 `/dev/sda`、`/dev/sda1` 以 `rw,async`
+  挂到 `/mnt/exUDISK`(在 chroot 之外)。所以手动 `mount -o ro` 会得到 `Resource busy`(同一设备已 rw 挂载);必须同样 rw 挂载才能共享。
+- **USB Mode 菜单**:选 `USB Port Role = OTG Host` 后,`usbmode` 检测到 `/dev/sdX1`(或 `sdX`)3 秒后以 rw 挂载到 chroot 内的 `/mnt/usb`
+  (依次试 vfat、exfat、ntfs);切回 `Device` 时先 `sync`、`umount`,再 `echo 1 > /sys/block/sdX/device/delete` 摘除设备(安全弹出)。
+  **该菜单逻辑已编译、链接检查通过,但没有在设备屏幕上实测。**
+- 注意:`/mnt/exUDISK` 是 chroot 之外的挂载,MinUI 里看不到;chroot 内用 `/mnt/usb`。默认 `rw,async` 挂载,不弹出直接拔盘有损坏风险。
+
+---------------------------------------------------------------------
+
 ## 7. 速查
 
 - 进设备:`adb shell`;设备 `usb0=192.168.7.1`;Mac 端网卡名通常是 `en16`("Tina ADB"),随接口变化。

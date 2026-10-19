@@ -7,6 +7,9 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/mount.h>
+#include <dirent.h>
+#include <errno.h>
 #include <msettings.h>
 
 #include "defines.h"
@@ -58,6 +61,72 @@ static int cur_role    = ROLE_DEVICE;
 static int keep_bg     = 0;
 static int boot_mode   = BOOT_ADB_ONLY;
 static char status_msg[128] = "Ready - Use UP/DOWN & LEFT/RIGHT or A";
+
+
+/* ---- OTG host: USB stick auto-mount (needs an externally powered hub: the port gives no 5V) ---- */
+#define USB_MNT "/mnt/usb"
+static int  usb_disk_mounted = 0;
+static char usb_dev[32] = "";
+static char usb_fs[16]  = "";
+static uint32_t usb_seen_ms = 0;     /* when the block device first appeared */
+static uint32_t usb_try_ms  = 0;
+
+/* find /dev/sdX1 (preferred) or /dev/sdX */
+static int find_usb_block(char *out, size_t n) {
+    DIR *d = opendir("/dev");
+    char whole[32] = "", part[32] = "";
+    struct dirent *e;
+    if (!d) return 0;
+    while ((e = readdir(d))) {
+        const char *nm = e->d_name;
+        if (nm[0] == 's' && nm[1] == 'd' && nm[2] >= 'a' && nm[2] <= 'z') {
+            if (nm[3] == 0) snprintf(whole, sizeof(whole), "/dev/%s", nm);
+            else if (nm[3] == '1' && nm[4] == 0) snprintf(part, sizeof(part), "/dev/%s", nm);
+        }
+    }
+    closedir(d);
+    if (part[0]) { snprintf(out, n, "%s", part); return 1; }
+    if (whole[0]) { snprintf(out, n, "%s", whole); return 1; }
+    return 0;
+}
+
+/* Note: the stock firmware's hotplug script already mounts the stick rw at /mnt/exUDISK (outside our
+ * chroot), so we must mount rw as well (a ro mount of the same device fails with EBUSY). */
+static void usb_try_mount(void) {
+    static const char *fss[] = { "vfat", "exfat", "ntfs", NULL };
+    char dev[32];
+    if (usb_disk_mounted || !find_usb_block(dev, sizeof(dev))) return;
+    mkdir("/mnt", 0777);
+    mkdir(USB_MNT, 0777);
+    for (int i = 0; fss[i]; i++) {
+        if (mount(dev, USB_MNT, fss[i], MS_NOATIME, NULL) == 0) {
+            usb_disk_mounted = 1;
+            snprintf(usb_dev, sizeof(usb_dev), "%s", dev);
+            snprintf(usb_fs, sizeof(usb_fs), "%s", fss[i]);
+            snprintf(status_msg, sizeof(status_msg), "USB disk %s mounted at " USB_MNT " (%s)", dev, fss[i]);
+            return;
+        }
+    }
+    snprintf(status_msg, sizeof(status_msg), "USB disk %s found, mount failed: %s", dev, strerror(errno));
+}
+
+static void usb_eject(void) {
+    sync();
+    if (usb_disk_mounted) {
+        if (umount(USB_MNT) != 0) umount2(USB_MNT, MNT_DETACH);
+        /* detach the SCSI device so the (stock, outside-chroot) automount can no longer write to it */
+        const char *base = strrchr(usb_dev, '/');
+        if (base) {
+            char sd[8] = {0}, cmd[96];
+            snprintf(sd, sizeof(sd), "%.3s", base + 1);
+            snprintf(cmd, sizeof(cmd), "echo 1 > /sys/block/%s/device/delete 2>/dev/null", sd);
+            system(cmd);
+        }
+    }
+    usb_disk_mounted = 0;
+    usb_dev[0] = 0;
+    usb_seen_ms = 0;
+}
 
 static void run_net(const char *arg) {
     const char *dir = getenv("USBMODE_PAK_DIR");
@@ -117,13 +186,14 @@ static void save_boot_config(void) {
 }
 
 static void apply_usb_config(void) {
+    if (usb_disk_mounted && cur_role != ROLE_HOST) usb_eject();
     if (cur_role == ROLE_HOST) {
         system("echo '' > " GADGET_DIR "/UDC 2>/dev/null");
         system("killall -TERM umsd.elf 2>/dev/null");
         system("cat /sys/devices/platform/soc@3000000/soc@3000000:usbc0@0/usb_null >/dev/null 2>&1");
         usleep(200000);
         system("cat /sys/devices/platform/soc@3000000/soc@3000000:usbc0@0/usb_host >/dev/null 2>&1");
-        snprintf(status_msg, sizeof(status_msg), "OTG Host Mode Active (External USB Ready)");
+        snprintf(status_msg, sizeof(status_msg), "OTG Host: use a POWERED hub (port has no 5V). Waiting for USB disk...");
         return;
     }
 
@@ -247,6 +317,21 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        if (cur_role == ROLE_HOST && !usb_disk_mounted) {
+            char dev[32];
+            if (find_usb_block(dev, sizeof(dev))) {
+                if (!usb_seen_ms) usb_seen_ms = now;
+                /* give the system hotplug 3 s, then retry every 2 s */
+                if (now - usb_seen_ms > 3000 && now - usb_try_ms > 2000) {
+                    usb_try_ms = now;
+                    usb_try_mount();
+                    dirty = 1;
+                }
+            } else {
+                usb_seen_ms = 0;
+            }
+        }
+
         if (PAD_justRepeated(BTN_UP) || PAD_justPressed(BTN_UP)) {
             selected = (selected - 1 + ITEM_COUNT) % ITEM_COUNT;
             dirty = 1;
@@ -347,7 +432,7 @@ int main(int argc, char *argv[]) {
             snprintf(row_buf[ITEM_BOOT_NET], sizeof(row_buf[0]), "Boot USB Network: %s",
                      boot_net ? "< ON >" : "< OFF >");
             snprintf(row_buf[ITEM_ROLE], sizeof(row_buf[0]), "USB Port Role: %s",
-                     cur_role == ROLE_DEVICE ? "< Device (PC/Mac) >" : "< OTG Host (Gamepad/USB) >");
+                     cur_role == ROLE_DEVICE ? "< Device (PC/Mac) >" : (usb_disk_mounted ? "< OTG Host: disk at /mnt/usb >" : "< OTG Host (powered hub) >"));
             snprintf(row_buf[ITEM_KEEP_BG], sizeof(row_buf[0]), "On Exit to MinUI: %s",
                      keep_bg ? "< Keep Storage Mounted >" : "< Auto Eject Storage >");
             snprintf(row_buf[ITEM_BOOT_DEFAULT], sizeof(row_buf[0]), "Boot Default: %s",

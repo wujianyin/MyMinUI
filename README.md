@@ -62,6 +62,7 @@
 
 ## 已知问题 / 待办
 
+- ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里选 *OTG Host* 会把它挂到 `/mnt/usb`(菜单逻辑未在屏幕上实测)。详见 NOTES.md §6.3。
 - 🟡 USB Mode 菜单(新增的两项)还没有在设备屏幕上实际操作验证;`off` 开机模式未测(`adb_ums_rw` 已测通过)。
 - 🟡 仅在 macOS 上验证了 USB 网络。**Windows(RNDIS/NCM)** 模块已能编译,但未上机测试,也没放进 pak。
 - 🟡 USB 端点有限(3 对 bulk + 1 个 interrupt):ADB + 存储 + 网络刚好用满,再叠加 USB Serial 大概率放不下,尚未做互斥/提示。
