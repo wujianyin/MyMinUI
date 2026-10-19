@@ -26,7 +26,6 @@ enum {
     ITEM_SERIAL,
     ITEM_NETWORK,      /* A opens the USB Network sub page */
     ITEM_ROLE,
-    ITEM_KEEP_BG,
     ITEM_BOOT,         /* A opens the Boot Defaults sub page */
     ITEM_EXIT,
     ITEM_COUNT
@@ -54,7 +53,6 @@ static int boot_storage = 0;
 static int boot_serial  = 0;
 static int boot_net     = 0;
 static int cur_role    = ROLE_DEVICE;
-static int keep_bg     = 0;
 static char status_msg[128] = "Ready - Use UP/DOWN & LEFT/RIGHT or A";
 
 
@@ -1054,12 +1052,6 @@ int main(int argc, char *argv[]) {
                 case ITEM_ROLE:
                     run_host_page(screen);
                     break;
-                case ITEM_KEEP_BG:
-                    keep_bg = !keep_bg;
-                    snprintf(status_msg, sizeof(status_msg),
-                             keep_bg ? "Will keep USB Storage mounted after exiting"
-                                     : "Will auto-disconnect USB Storage on exit");
-                    break;
                 case ITEM_BOOT:
                     if (is_a) run_boot_page(screen);
                     break;
@@ -1084,8 +1076,6 @@ int main(int argc, char *argv[]) {
                      cur_net == 1 ? "< ON +Internet >" : (cur_net == 2 ? "< ON Local >" : "< OFF >"));
             snprintf(rows[ITEM_ROLE], UI_ROW_LEN, "USB Host (OTG): %s",
                      cur_role == ROLE_HOST ? "< ON >  (A: devices)" : "< OFF >  (A: open)");
-            snprintf(rows[ITEM_KEEP_BG], UI_ROW_LEN, "On Exit to MinUI: %s",
-                     keep_bg ? "< Keep Storage >" : "< Auto Eject >");
             snprintf(rows[ITEM_BOOT], UI_ROW_LEN, "Boot Defaults  (A: choose)");
             snprintf(rows[ITEM_EXIT], UI_ROW_LEN, "[ Return to MinUI ]");
             ui_draw_list(screen, show_setting, "USB Mode Manager", rows, ITEM_COUNT, selected, &top,
@@ -1096,7 +1086,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (!keep_bg && cur_storage != STORAGE_OFF) {
+    if (cur_storage != STORAGE_OFF) {   /* leaving USB Mode always ejects USB Storage */
         cur_storage = STORAGE_OFF;
         apply_usb_config();
     } else {
