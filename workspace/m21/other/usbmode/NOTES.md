@@ -327,3 +327,21 @@ arm-linux-gnueabihf-strip usbmode.elf'
 - 推测:sunxi-ehci 对多段批量传输处理有问题。对策:守护进程在发现磁盘时把 `/sys/block/<sd>/queue/max_sectors_kb` 压到 4,
   让每个请求只含一个物理段,并且重试挂载时 `sync; echo 3 > /proc/sys/vm/drop_caches` 丢弃被污染的缓存页。
 - 探测失败时会把分区头 2KB 十六进制写到 `/mnt/SDCARD/usbprobe.txt`,便于离线分析。
+
+
+## 7. Windows 支持:CDC-ACM 串口 + NCM/RNDIS 网络(本次)
+- **为什么 Windows 显示没驱动**:`gser` 是厂商自定义类(0xFF),Windows 只对标准 CDC-ACM 自动用 `usbser`;ECM Windows 没有内置驱动。
+  内核没开 ACM/NCM/RNDIS,按 4.2 的方法交叉编译 `f_acm_x.ko`(`f_acm.c` 主线原样)、`f_ncm_x.ko`(同样绕过 `can_support_ecm`,见 `kmod/f_ncm.patch`)、
+  `f_rndis_x.ko`(`f_rndis.c`+`rndis.c` 原样)。重建 5.4.61 源码树:下载 → 套 `kmod/*_pad.*` 与新的 `netdevice_h_pad.patch` → `kmod/build.sh`
+  → `make M=<含 kmod 源码与 f_acm/f_ncm/f_rndis/rndis.c 的目录>`。
+- **新发现的结构体问题(`netdev_priv` 偏移)**:厂商 `alloc_netdev_mqs` 里 `ALIGN(sizeof(struct net_device))=1600`,主线是 1344,而模块里的 `netdev_priv()` 是内联常量
+  → `struct eth_dev` 实际叠在厂商 net_device 的尾部字段上(`rtnl_link_ops`在 1412 等)。ECM 一直"碰巧能用"(叠到的位置写的是 0),NCM/RNDIS 会把 `wrap/unwrap` 函数指针写到 `rtnl_link_ops`,
+  `ifconfig usb0 up` 时在 `if_nlmsg_size → strlen` 里 oops(`strlen(e59f337c)`,r4 指向 `ncm_unwrap_ntb`)。修法:给 `struct net_device` 末尾加 256 字节填充,让 priv 偏移=1600。
+  **所有网络模块(含 ECM、u_ether)都已用新头文件重编**。
+- **RNDIS 要点**:`f_rndis` 默认 IAD 类是 02/ACM/vendor,Windows 不认;要设 `functions/rndis.usb0/{class,subclass,protocol}` = `e0/01/03`。注意这几个 configfs 属性用 `sscanf("%02hhx")` 解析,
+  必须写 `e0`,写 `0xe0` 会得到 0。设备描述符类设为 `EF/02/01`(IAD 组合设备)。
+- **接口名**:每个注册过的网络功能占一个 `usbN`(ecm→usb0,之后切 ncm→usb1…),`usbnet.sh up` 读 `functions/<type>.usb0/ifname` 并把别的 `usbN` 清 IP 后 down,DHCP 绑定到正确的接口。
+- **端点限制**:ACM/ECM/NCM/RNDIS 都需要 1 个中断端点(ep4),UDC 只有一个,所以串口和网络互斥;菜单里开其中一个会自动关另一个。ADB+存储+网络仍可共存。
+- **已验证(Mac)**:`f_acm_x` 出现 `/dev/cu.usbmodemXXXX`,双向收发正常;NCM 自动获取 192.168.7.2、ping 1400 字节、8000 字节分片正常;ECM 回归正常;
+  开机路径(`usb_nettype`=ncm / rndis)均已重启验证。RNDIS 在 Mac 上只能验证枚举和描述符(类 e0/01/03、设备类 EF/02/01),**真正的 Windows 驱动绑定待用户验证**。
+- **测试小技巧**:从 adb 里改 gadget 要先 `echo "" > UDC`,脚本必须后台运行且**用 `usleep` 而不是 `sleep`**(解绑后 stock 的 `sleep` 会被连带杀掉,脚本中途消失);用 `(trap "" HUP; sh script &)` 启动。

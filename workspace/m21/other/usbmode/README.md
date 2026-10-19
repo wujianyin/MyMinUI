@@ -1,17 +1,22 @@
 # USB Mode.pak (m21 / Allwinner H133, Tina 5.4.61 vendor kernel)
 
-Items: USB Storage (OFF/RW/RO), ADB, USB Serial, USB Network (CDC-ECM), OTG role,
+Items: USB Storage (OFF/RW/RO), ADB, USB Serial (CDC-ACM), USB Network (OFF / +Internet / local) with a
+Network Type selector (ECM = Mac/Linux, NCM = Mac/Linux/Win11, RNDIS = Windows), USB Host (OTG) sub page,
 Boot Default (+ Boot USB Network).
+
+Serial and Network are mutually exclusive: the UDC has a single interrupt endpoint. When either is on,
+the device class is set to EF/02/01 (IAD) so Windows binds its inbox drivers (usbser for ACM, usb8023 for RNDIS).
 
 ## Files
 - `usbmode.c`   UI (links against MinUI api/platform/utils, see `crt_glibc.c` for the glibc-2.26 start stub)
 - `umsd.c`      FunctionFS mass-storage daemon
 - `dhcpd_mini.c` single-lease DHCP server for `usb0` (192.168.7.1 -> 192.168.7.2)
-- `usbnet.sh`   `on|off|up` helper called by usbmode (insmod, ecm.usb0 function, ifconfig, DHCP)
+- `usbnet.sh`   `on [ecm|ncm|rndis]|off|up|serial on|off` helper called by usbmode (insmod, function, ifconfig, DHCP)
 - `tomato.m21`  boot hook; reads `.userdata/m21/usb_boot_mode.cfg`
-  (line 1: `adb_only|adb_ums_rw|adb_ums_ro|off`, optional line 2: `net`)
-- `kmod/`       out-of-tree `u_ether_x.ko` / `f_ecm_x.ko` (mainline 5.4.61 `u_ether.c`/`f_ecm.c`;
-  only change: `can_support_ecm()` bypassed because sunxi UDC sets `quirk_altset_not_supp`)
+  (line 1: `adb_only|adb_ums_rw|adb_ums_ro|off`, optional line 2: `net`); network type in `.userdata/m21/usb_nettype`
+- `kmod/`       out-of-tree `u_ether_x.ko` / `f_ecm_x.ko` / `f_ncm_x.ko` / `f_rndis_x.ko` / `f_acm_x.ko` (mainline 5.4.61;
+  changes: `can_support_ecm()` bypassed in ECM/NCM because sunxi UDC sets `quirk_altset_not_supp` (`f_ncm.patch`),
+  `u_ether.c` DMA alignment fixes)
 
 ## Building the modules
 The vendor kernel is configured without ECM/NCM/RNDIS, so they are built out of tree against a
@@ -24,6 +29,7 @@ layouts differ from mainline, so padding fields were added to the headers of tha
 | `struct usb_function_instance` | `linux/usb/composite.h` | `int sunxi_pad` after `fd`          |
 | `struct sk_buff`            | `linux/skbuff.h`     | `char sunxi_pad[16]` after `headers_end[0]`|
 | `struct usb_gadget`         | `linux/usb/gadget.h` | `char sunxi_pad[16]` after `udc`, `char sunxi_pad2[184]` after `dev` |
+| `struct net_device`         | `linux/netdevice.h`  | `char sunxi_tail_pad[256]` at the end (`netdevice_h_pad.patch`): vendor `netdev_priv()` starts at 1600, mainline at 1344. Without it `struct eth_dev` overlays vendor net_device fields; it only worked for ECM because `wrap`/`unwrap` are NULL there. NCM/RNDIS set them and oops in `if_nlmsg_size` (`dev->rtnl_link_ops`). |
 
 (`*_pad.*` files in `kmod/` hold the exact edits.) Wrong layouts show up as NULL derefs in IRQ context.
 

@@ -1,0 +1,11 @@
+--- /tmp/kbuild/linux-5.4.61/drivers/usb/gadget/function/f_ncm.c	2020-08-26 16:41:08
++++ /tmp/kbuild/mod/f_ncm.c	2026-10-19 23:33:42
+@@ -1392,7 +1392,7 @@
+ 	struct usb_ep		*ep;
+ 	struct f_ncm_opts	*ncm_opts;
+ 
+-	if (!can_support_ecm(cdev->gadget))
++	if (0 && !can_support_ecm(cdev->gadget)) /* sunxi udc sets quirk_altset_not_supp but NCM works */
+ 		return -EINVAL;
+ 
+ 	ncm_opts = container_of(f->fi, struct f_ncm_opts, func_inst);

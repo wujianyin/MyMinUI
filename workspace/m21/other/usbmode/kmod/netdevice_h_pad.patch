@@ -1,0 +1,10 @@
+--- /tmp/kbuild/netdevice.h.orig	2026-10-19 23:44:09
++++ /tmp/kbuild/linux-5.4.61/include/linux/netdevice.h	2026-10-19 23:44:09
+@@ -2066,6 +2066,7 @@
+ 	struct lock_class_key	addr_list_lock_key;
+ 	bool			proto_down;
+ 	unsigned		wol_enabled:1;
++	char			sunxi_tail_pad[256];
+ };
+ #define to_net_dev(d) container_of(d, struct net_device, dev)
+ 

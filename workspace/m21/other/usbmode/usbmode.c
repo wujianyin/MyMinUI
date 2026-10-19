@@ -18,12 +18,14 @@
 #define NOSHARE_FLAG  "/mnt/SDCARD/.userdata/m21/usb_noshare"
 #define GADGET_DIR    "/sys/kernel/config/usb_gadget/g1"
 #define UDC_CTRL      "4100000.udc-controller"
+#define NETTYPE_FILE  "/mnt/SDCARD/.userdata/m21/usb_nettype"
 
 enum {
     ITEM_STORAGE = 0,
     ITEM_ADB,
     ITEM_SERIAL,
     ITEM_NETWORK,
+    ITEM_NETTYPE,
     ITEM_ROLE,
     ITEM_KEEP_BG,
     ITEM_BOOT_DEFAULT,
@@ -54,6 +56,7 @@ static int cur_storage = STORAGE_OFF;
 static int cur_adb     = 1;
 static int cur_serial  = 0;
 static int cur_net     = 0;   /* 0=off, 1=on (+internet via PC), 2=on (local only) */
+static int net_type    = 0;   /* 0=ECM (Mac/Linux), 1=NCM (Mac/Linux/Win11), 2=RNDIS (Windows) */
 static int boot_net    = 0;
 static int cur_role    = ROLE_DEVICE;
 static int keep_bg     = 0;
@@ -61,11 +64,22 @@ static int boot_mode   = BOOT_ADB_ONLY;
 static char status_msg[128] = "Ready - Use UP/DOWN & LEFT/RIGHT or A";
 
 
+static const char *net_type_name(void) { return net_type == 1 ? "ncm" : (net_type == 2 ? "rndis" : "ecm"); }
+static const char *net_type_label(void) {
+    return net_type == 1 ? "NCM (Mac/Linux/Win11)" : (net_type == 2 ? "RNDIS (Windows)" : "ECM (Mac/Linux)");
+}
+static void save_net_type(void) {
+    mkdir("/mnt/SDCARD/.userdata", 0777);
+    mkdir("/mnt/SDCARD/.userdata/m21", 0777);
+    FILE *f = fopen(NETTYPE_FILE, "w");
+    if (f) { fprintf(f, "%s\n", net_type_name()); fclose(f); }
+}
+
 static void run_net(const char *arg) {
     const char *dir = getenv("USBMODE_PAK_DIR");
     char cmd[512];
     if (!dir || !*dir) dir = "/mnt/SDCARD/Tools/m21/USB Mode.pak";
-    snprintf(cmd, sizeof(cmd), "sh '%s/usbnet.sh' %s >/tmp/usbnet.log 2>&1", dir, arg);
+    snprintf(cmd, sizeof(cmd), "sh '%s/usbnet.sh' %s >>/tmp/usbnet.log 2>&1", dir, arg);
     system(cmd);
 }
 
@@ -88,8 +102,17 @@ static void detect_current_state(void) {
         cur_storage = STORAGE_OFF;
     }
     cur_adb = is_link_present(GADGET_DIR "/configs/c.1/ffs.adb") ? 1 : 0;
-    cur_serial = is_link_present(GADGET_DIR "/configs/c.1/gser.0") ? 1 : 0;
-    cur_net = is_link_present(GADGET_DIR "/configs/c.1/ecm.usb0") ? (access(NOSHARE_FLAG, F_OK) == 0 ? 2 : 1) : 0;
+    cur_serial = (is_link_present(GADGET_DIR "/configs/c.1/acm.0") || is_link_present(GADGET_DIR "/configs/c.1/gser.0")) ? 1 : 0;
+    {   /* saved network type, then override with whatever is actually linked right now */
+        char tb[16] = "";
+        FILE *tf = fopen(NETTYPE_FILE, "r");
+        if (tf) { if (fgets(tb, sizeof(tb), tf)) { if (!strncmp(tb, "ncm", 3)) net_type = 1; else if (!strncmp(tb, "rndis", 5)) net_type = 2; else net_type = 0; } fclose(tf); }
+        int ln = -1;
+        if (is_link_present(GADGET_DIR "/configs/c.1/ecm.usb0")) { ln = 0; net_type = 0; }
+        else if (is_link_present(GADGET_DIR "/configs/c.1/ncm.usb0")) { ln = 1; net_type = 1; }
+        else if (is_link_present(GADGET_DIR "/configs/c.1/rndis.usb0")) { ln = 2; net_type = 2; }
+        cur_net = ln >= 0 ? (access(NOSHARE_FLAG, F_OK) == 0 ? 2 : 1) : 0;
+    }
 
     FILE *fp = fopen(BOOT_CFG_PATH, "r");
     if (fp) {
@@ -138,8 +161,8 @@ static void apply_usb_config(void) {
     system("rm -f " GADGET_DIR "/configs/c.1/ffs.adb "
                     GADGET_DIR "/configs/c.1/ffs.ums "
                     GADGET_DIR "/configs/c.1/gser.0 "
-                    GADGET_DIR "/configs/c.1/ecm.usb0 2>/dev/null");
-    run_net("off");
+                    GADGET_DIR "/configs/c.1/acm.0 2>/dev/null");
+    run_net("off");   /* removes ecm/ncm/rndis links, dhcp server, default route */
 
     /* Stop existing umsd.elf */
     system("killall -TERM umsd.elf 2>/dev/null");
@@ -172,8 +195,7 @@ static void apply_usb_config(void) {
 
     /* Configure USB Serial (ttyGS0) if enabled */
     if (cur_serial) {
-        system("mkdir -p " GADGET_DIR "/functions/gser.0 2>/dev/null");
-        system("ln -sf " GADGET_DIR "/functions/gser.0 " GADGET_DIR "/configs/c.1/gser.0 2>/dev/null");
+        run_net("serial on");   /* CDC-ACM: driver built into Windows/macOS/Linux; shows up as ttyGS0 here */
         if (!is_process_running("ttyGS0")) {
             system("(while :; do [ -c /dev/ttyGS0 ] && /bin/ash --login </dev/ttyGS0 >/dev/ttyGS0 2>&1; sleep 2; done) &");
         }
@@ -182,13 +204,24 @@ static void apply_usb_config(void) {
     /* Configure USB Network (CDC-ECM) if enabled */
     int net_active = 0;
     if (cur_net) {
-        run_net("on");
-        net_active = is_link_present(GADGET_DIR "/configs/c.1/ecm.usb0");
+        {
+            char na[32], lp[96];
+            snprintf(na, sizeof(na), "on %s", net_type_name());
+            run_net(na);
+            snprintf(lp, sizeof(lp), GADGET_DIR "/configs/c.1/%s.usb0", net_type_name());
+            net_active = is_link_present(lp);
+        }
         if (!net_active) cur_net = 0;
     }
 
     /* Bind UDC if at least one function is enabled */
     if (cur_storage != STORAGE_OFF || cur_adb || cur_serial || cur_net) {
+        /* ACM / ECM / NCM / RNDIS all use interface association descriptors: tell Windows (class EF/02/01) */
+        if (cur_serial || cur_net) {
+            system("echo 0xEF > " GADGET_DIR "/bDeviceClass; echo 0x02 > " GADGET_DIR "/bDeviceSubClass; echo 0x01 > " GADGET_DIR "/bDeviceProtocol");
+        } else {
+            system("echo 0x00 > " GADGET_DIR "/bDeviceClass; echo 0x00 > " GADGET_DIR "/bDeviceSubClass; echo 0x00 > " GADGET_DIR "/bDeviceProtocol");
+        }
         system("echo '0x18d1' > " GADGET_DIR "/idVendor 2>/dev/null");
         system("echo '0xD002' > " GADGET_DIR "/idProduct 2>/dev/null");
         system("echo '" UDC_CTRL "' > " GADGET_DIR "/UDC 2>/dev/null");
@@ -208,7 +241,7 @@ static void apply_usb_config(void) {
                  cur_storage == STORAGE_RW ? "RW" : (cur_storage == STORAGE_RO ? "RO" : "OFF"),
                  cur_adb ? "ON" : "OFF",
                  cur_serial ? "ON" : "OFF",
-                 cur_net == 1 ? "ECM 192.168.7.1 +NET" : (cur_net == 2 ? "ECM 192.168.7.1 local" : "OFF"));
+                 cur_net == 1 ? "NET 192.168.7.1 +inet" : (cur_net == 2 ? "NET 192.168.7.1 local" : "OFF"));
     } else {
         snprintf(status_msg, sizeof(status_msg), "All USB Gadget Functions Disabled");
     }
@@ -646,10 +679,19 @@ int main(int argc, char *argv[]) {
                 case ITEM_SERIAL:
                     cur_serial = !cur_serial;
                     cur_role = ROLE_DEVICE;
+                    if (cur_serial && cur_net) cur_net = 0;   /* UDC has one interrupt endpoint: serial and network are exclusive */
                     apply_usb_config();
+                    if (cur_serial) snprintf(status_msg, sizeof(status_msg), "Serial (CDC-ACM) ON; Network turned off (not enough endpoints)");
+                    break;
+                case ITEM_NETTYPE:
+                    net_type = (net_type + dir + 3) % 3;
+                    save_net_type();
+                    if (cur_net) { cur_role = ROLE_DEVICE; apply_usb_config(); }
+                    else snprintf(status_msg, sizeof(status_msg), "Network type: %s", net_type_label());
                     break;
                 case ITEM_NETWORK:
                     cur_net = (cur_net + dir + 3) % 3;
+                    if (cur_net && cur_serial) cur_serial = 0;   /* exclusive with serial (one interrupt endpoint) */
                     if (cur_net == 2) {
                         mkdir("/mnt/SDCARD/.userdata", 0777);
                         mkdir("/mnt/SDCARD/.userdata/m21", 0777);
@@ -709,7 +751,8 @@ int main(int argc, char *argv[]) {
                      (cur_storage == STORAGE_RO ? "< ON (Read-Only) >" : "< OFF >"));
             snprintf(row_buf[ITEM_ADB], sizeof(row_buf[0]), "ADB Debugging: %s",
                      cur_adb ? "< ON >" : "< OFF >");
-            snprintf(row_buf[ITEM_SERIAL], sizeof(row_buf[0]), "USB Serial (ttyGS0): %s",
+            snprintf(row_buf[ITEM_NETTYPE], sizeof(row_buf[0]), "Network Type: < %s >", net_type_label());
+            snprintf(row_buf[ITEM_SERIAL], sizeof(row_buf[0]), "USB Serial (CDC-ACM, ttyGS0): %s",
                      cur_serial ? "< ON >" : "< OFF >");
             snprintf(row_buf[ITEM_NETWORK], sizeof(row_buf[0]), "USB Network (192.168.7.x): %s",
                      cur_net == 1 ? "< ON (+Internet via PC) >" : (cur_net == 2 ? "< ON (Local only) >" : "< OFF >"));

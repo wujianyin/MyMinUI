@@ -162,17 +162,29 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 		else
 			sleep 1
 		fi
-		# optional USB network (CDC-ECM): 2nd line of usb_boot_mode.cfg == "net"
+		# optional USB network: 2nd line of usb_boot_mode.cfg == "net"; type (ecm|ncm|rndis) in usb_nettype
 		BOOT_USB_NET=0
+		BOOT_NETTYPE=ecm
+		if [ -f "/mnt/SDCARD/.userdata/m21/usb_nettype" ]; then
+			BOOT_NETTYPE=$(head -n 1 /mnt/SDCARD/.userdata/m21/usb_nettype | tr -d "\r\n ")
+		fi
+		case "$BOOT_NETTYPE" in ecm|ncm|rndis) ;; *) BOOT_NETTYPE=ecm ;; esac
 		if [ -f "/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg" ] && [ "$(sed -n 2p /mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg | tr -d '\r\n ')" = "net" ]; then
 			G="/sys/kernel/config/usb_gadget/g1"
 			UP="/mnt/SDCARD/Tools/m21/USB Mode.pak"
 			echo "" > "$G/UDC" 2>/dev/null
 			lsmod | grep -q "^u_ether_x" || insmod "$UP/modules/u_ether_x.ko" >> "$USB_LOG" 2>&1
-			lsmod | grep -q "^f_ecm_x" || insmod "$UP/modules/f_ecm_x.ko" >> "$USB_LOG" 2>&1
-			if lsmod | grep -q "^f_ecm_x"; then
-				mkdir -p "$G/functions/ecm.usb0" 2>/dev/null
-				ln -sf "$G/functions/ecm.usb0" "$G/configs/c.1/ecm.usb0" 2>/dev/null && BOOT_USB_NET=1
+			lsmod | grep -q "^f_${BOOT_NETTYPE}_x" || insmod "$UP/modules/f_${BOOT_NETTYPE}_x.ko" >> "$USB_LOG" 2>&1
+			if lsmod | grep -q "^f_${BOOT_NETTYPE}_x"; then
+				mkdir -p "$G/functions/${BOOT_NETTYPE}.usb0" 2>/dev/null
+				if [ "$BOOT_NETTYPE" = "rndis" ]; then
+					echo e0 > "$G/functions/rndis.usb0/class"
+					echo 01 > "$G/functions/rndis.usb0/subclass"
+					echo 03 > "$G/functions/rndis.usb0/protocol"
+				fi
+				# interface association descriptors: Windows needs device class EF/02/01
+				echo 0xEF > "$G/bDeviceClass"; echo 0x02 > "$G/bDeviceSubClass"; echo 0x01 > "$G/bDeviceProtocol"
+				ln -sf "$G/functions/${BOOT_NETTYPE}.usb0" "$G/configs/c.1/${BOOT_NETTYPE}.usb0" 2>/dev/null && BOOT_USB_NET=1
 			fi
 		fi
 		UDC_NAME=$(ls /sys/class/udc 2>/dev/null | head -n 1)
@@ -180,8 +192,9 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 			echo "$UDC_NAME" > /sys/kernel/config/usb_gadget/g1/UDC 2>> "$USB_LOG"
 			if [ "$BOOT_USB_NET" = "1" ]; then
 				if [ -z "$(cat /sys/kernel/config/usb_gadget/g1/UDC)" ]; then
-					echo "ECM bind failed, falling back" >> "$USB_LOG"
-					rm -f "$G/configs/c.1/ecm.usb0"
+					echo "${BOOT_NETTYPE} bind failed, falling back" >> "$USB_LOG"
+					rm -f "$G/configs/c.1/${BOOT_NETTYPE}.usb0"
+					echo 0x00 > "$G/bDeviceClass"; echo 0x00 > "$G/bDeviceSubClass"; echo 0x00 > "$G/bDeviceProtocol"
 					echo "$UDC_NAME" > /sys/kernel/config/usb_gadget/g1/UDC 2>> "$USB_LOG"
 				else
 					i=0
