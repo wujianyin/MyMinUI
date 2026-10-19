@@ -300,16 +300,33 @@ static void uh_refresh(unsigned now) {
     }
 }
 
-/* Safe eject: unmount everything on that disk, flush, detach the SCSI device. */
+/* Best effort: also release the stock hotplug automount (/mnt/exUDISK lives outside our chroot,
+ * reach it through init's root). Without this the fs would stay mounted by the stock side. */
+static void uh_umount_stock(const char *disk) {
+    FILE *f = fopen("/proc/mounts", "r");
+    char dev[128], mp[128], fs[32], rest[256];
+    int hit = 0;
+    if (!f) return;
+    while (fscanf(f, "%127s %127s %31s %255[^\n]\n", dev, mp, fs, rest) == 4) {
+        const char *b = strrchr(dev, '/');
+        if (b && !strncmp(mp, "/mnt/exUDISK", 12) && !strncmp(b + 1, disk, strlen(disk))) hit = 1;
+    }
+    fclose(f);
+    if (hit && umount("/proc/1/root/mnt/exUDISK") != 0) umount2("/proc/1/root/mnt/exUDISK", MNT_DETACH);
+}
+
+/* Eject: unmount everything on that disk and flush.  The USB device stays attached (and is NOT
+ * auto-remounted) so the user can pick "Mount / retry" later without replugging. */
 static void uh_eject_disk(const char *disk) {
     sync();
     for (int i = 0; i < UH_MAX_MNT; i++)
-        if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, disk)) { uh_umount_one(&uh_mnts[i]); uh_mnts[i].active = 0; }
+        if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, disk)) {
+            uh_umount_one(&uh_mnts[i]);
+            snprintf(uh_mnts[i].err, sizeof(uh_mnts[i].err), "ejected");
+            uh_mnts[i].tries = 5;
+        }
+    uh_umount_stock(disk);
     sync();
-    char p[96];
-    snprintf(p, sizeof(p), "/sys/block/%s/device/delete", disk);
-    int fd = open(p, O_WRONLY);
-    if (fd >= 0) { if (write(fd, "1", 1) < 0) { /* ignore */ } close(fd); }
 }
 
 /* Stateless eject: works from any process by parsing /proc/mounts for our mount points. */
@@ -415,7 +432,7 @@ static void uh_cmd_handle(void) {                  /* daemon side */
         if (!strcmp(cmd, "eject")) uh_eject_disk(arg);
         else if (!strcmp(cmd, "retry"))
             for (int i = 0; i < UH_MAX_MNT; i++)
-                if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, arg)) { uh_mnts[i].tries = 0; uh_mnts[i].first_ms = 0; uh_mnts[i].last_try_ms = 0; }
+                if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, arg)) { uh_mnts[i].err[0] = 0; uh_mnts[i].tries = 0; uh_mnts[i].first_ms = 0; uh_mnts[i].last_try_ms = 0; }
     }
     fclose(f);
     unlink(UH_CMD);

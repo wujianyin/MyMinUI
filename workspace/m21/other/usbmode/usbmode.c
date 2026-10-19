@@ -228,15 +228,17 @@ static void host_set_enabled(int on) {
 static void host_dev_line(const UhDev *u, char *out, size_t n) {
     char extra[64] = "";
     if (u->cls == UC_STORAGE) {
-        int nm = 0, mounted = 0, failed = 0;
+        int nm = 0, mounted = 0, failed = 0, ejected = 0;
         unsigned long long mb = 0;
         for (int i = 0; i < UH_MAX_MNT; i++)
             if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) {
                 nm++; mounted += uh_mnts[i].mounted; mb += uh_mnts[i].mb;
-                if (!uh_mnts[i].mounted && uh_mnts[i].tries >= 5) failed++;
+                if (!uh_mnts[i].mounted && !strcmp(uh_mnts[i].err, "ejected")) ejected++;
+                else if (!uh_mnts[i].mounted && uh_mnts[i].tries >= 5) failed++;
             }
         if (!nm) snprintf(extra, sizeof(extra), " - reading...");
         else if (mounted == nm) snprintf(extra, sizeof(extra), " - mounted (%llu MB)", mb);
+        else if (ejected && !failed) snprintf(extra, sizeof(extra), " - ejected (safe to unplug)");
         else if (failed) snprintf(extra, sizeof(extra), " - mount failed");
         else snprintf(extra, sizeof(extra), " - mounting...");
     }
@@ -348,7 +350,7 @@ static int host_storage_menu(SDL_Surface *screen, const UhDev *u, char *hint, si
             if (sel == 0) {
                 if (mounted_n) {
                     char cmd[40]; snprintf(cmd, sizeof(cmd), "eject %s", u->disk); uh_cmd_send(cmd);
-                    snprintf(hint, hint_n, "Ejecting %s... safe to unplug when it disappears", u->disk);
+                    snprintf(hint, hint_n, "Ejected %s - safe to unplug (A > Mount to reuse)", u->disk);
                     refresh = 1; quit = 1;
                 } else snprintf(hint, hint_n, "%s: nothing is mounted", u->disk), quit = 1;
             } else if (sel == 1) {
