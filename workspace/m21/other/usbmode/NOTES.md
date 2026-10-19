@@ -279,10 +279,24 @@ arm-linux-gnueabihf-strip usbmode.elf'
   但内核没有对应驱动(`CONFIG_USB_NET_DRIVERS` 未开,可考虑补编 `r8152` 做有线网络)。内核有 usb-storage、SCSI 磁盘、vfat、exfat、ntfs(只读驱动),没有 ext4。
 - **原厂 rootfs 会自动挂载 U 盘**:`/etc/hotplug.d/block/10-mount` + `/etc/config/fstab` 把 `/dev/sda`、`/dev/sda1` 以 `rw,async`
   挂到 `/mnt/exUDISK`(在 chroot 之外)。所以手动 `mount -o ro` 会得到 `Resource busy`(同一设备已 rw 挂载);必须同样 rw 挂载才能共享。
-- **USB Mode 菜单**:选 `USB Port Role = OTG Host` 后,`usbmode` 检测到 `/dev/sdX1`(或 `sdX`)3 秒后以 rw 挂载到 chroot 内的 `/mnt/usb`
-  (依次试 vfat、exfat、ntfs);切回 `Device` 时先 `sync`、`umount`,再 `echo 1 > /sys/block/sdX/device/delete` 摘除设备(安全弹出)。
-  **该菜单逻辑已编译、链接检查通过,但没有在设备屏幕上实测。**
-- 注意:`/mnt/exUDISK` 是 chroot 之外的挂载,MinUI 里看不到;chroot 内用 `/mnt/usb`。默认 `rw,async` 挂载,不弹出直接拔盘有损坏风险。
+- **USB Host 二级页面(`usbhost.h` + `usbmode.c: run_host_page`)**:主菜单的 *USB Host (OTG)* 一行按 A 进入二级页:
+  - 第一行 `Host mode: < ON/OFF >`(左右/A 切换)。ON = 解绑 UDC、停 `umsd`、读 `usb_null`/`usb_host` 切 OTG 角色(**同一个 Type-C 口,
+    ADB/USB gadget 在 Host 开着时不可用**);OFF = 先弹出所有 U 盘,再恢复 device 角色并重绑 gadget(ADB 回来)。
+  - Host ON 后每秒枚举 `/sys/bus/usb/devices`,列出所有 USB 设备:`[Storage]/[Hub]/[Input]/[Network]/[Audio]/[Internal]/[Other] 名称`,
+    存储设备后面显示 `reading... / mounting... / mounted (xxx MB) / mount failed`。机内手柄(ehci1/ohci1 上的 Twin USB JoysticK)标 `[Internal]`。
+  - 光标移到设备行,底部显示详情(总线路径、VID:PID、速度、`sdXn:fs -> 挂载点` 或错误)。
+  - 存储设备自动挂载:对该盘每个分区(无分区表则整盘)识别文件系统(读首扇区:FAT/exFAT/NTFS;ext2/3/4 提示不支持),
+    发现 3 秒后(等原厂 hotplug 先挂)以 rw 挂到 `/mnt/SDCARD/USB/<sdXn>`(chroot 内外都可见;**必须 rw**,原因见上),失败每 2 秒重试,最多 5 次;
+    NTFS 内核驱动只读,rw 失败时退回只读。
+  - 在存储设备行按 A:已挂载 → 安全弹出(`sync`、`umount`、`rmdir`、`echo 1 > /sys/block/sdX/device/delete`);未挂载 → 重试挂载。
+  - 拔盘:块设备消失后自动 `umount -l` 并清理挂载点。离开 Host(切 OFF、或在主菜单改 Storage/ADB/Serial/Network)都会先弹出所有盘。
+  - 命令行自测(无需屏幕):`usbhost_selftest.sh <秒数>`(在 pak 目录,后台运行)→ 切 host、每 2 秒列设备/自动挂载并打印前 12 行文件列表 →
+    弹出并恢复 device,日志 `/mnt/SDCARD/usbhost_selftest.log`。**无 hub 的空跑已通过**(枚举到机内手柄、切换/恢复正常);
+    带 hub + U 盘的挂载、弹出、屏幕页面**尚未实测**。
+- 注意:`/mnt/exUDISK`(原厂挂载点)在 chroot 外;弹出后原厂那个挂载会残留成失效挂载(chroot 里清不掉),不影响我们的 `/mnt/SDCARD/USB/*`。
+  默认 `rw,async`,不弹出直接拔盘有损坏风险。
+- 不支持/待做:ext4 U 盘(可考虑用已有的 fuse2fs)、NTFS 读写(原厂 `ntfs-3g` 是 musl 版,在 glibc chroot 里跑不了)、RTL8152 有线网卡驱动、
+  磁盘卷标显示、多 hub 层级缩进显示。
 
 ---------------------------------------------------------------------
 

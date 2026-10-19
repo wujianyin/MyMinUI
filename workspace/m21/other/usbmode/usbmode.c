@@ -7,14 +7,12 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <sys/mount.h>
-#include <dirent.h>
-#include <errno.h>
 #include <msettings.h>
 
 #include "defines.h"
 #include "api.h"
 #include "utils.h"
+#include "usbhost.h"
 
 #define BOOT_CFG_PATH "/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg"
 #define NOSHARE_FLAG  "/mnt/SDCARD/.userdata/m21/usb_noshare"
@@ -62,71 +60,6 @@ static int keep_bg     = 0;
 static int boot_mode   = BOOT_ADB_ONLY;
 static char status_msg[128] = "Ready - Use UP/DOWN & LEFT/RIGHT or A";
 
-
-/* ---- OTG host: USB stick auto-mount (needs an externally powered hub: the port gives no 5V) ---- */
-#define USB_MNT "/mnt/usb"
-static int  usb_disk_mounted = 0;
-static char usb_dev[32] = "";
-static char usb_fs[16]  = "";
-static uint32_t usb_seen_ms = 0;     /* when the block device first appeared */
-static uint32_t usb_try_ms  = 0;
-
-/* find /dev/sdX1 (preferred) or /dev/sdX */
-static int find_usb_block(char *out, size_t n) {
-    DIR *d = opendir("/dev");
-    char whole[32] = "", part[32] = "";
-    struct dirent *e;
-    if (!d) return 0;
-    while ((e = readdir(d))) {
-        const char *nm = e->d_name;
-        if (nm[0] == 's' && nm[1] == 'd' && nm[2] >= 'a' && nm[2] <= 'z') {
-            if (nm[3] == 0) snprintf(whole, sizeof(whole), "/dev/%s", nm);
-            else if (nm[3] == '1' && nm[4] == 0) snprintf(part, sizeof(part), "/dev/%s", nm);
-        }
-    }
-    closedir(d);
-    if (part[0]) { snprintf(out, n, "%s", part); return 1; }
-    if (whole[0]) { snprintf(out, n, "%s", whole); return 1; }
-    return 0;
-}
-
-/* Note: the stock firmware's hotplug script already mounts the stick rw at /mnt/exUDISK (outside our
- * chroot), so we must mount rw as well (a ro mount of the same device fails with EBUSY). */
-static void usb_try_mount(void) {
-    static const char *fss[] = { "vfat", "exfat", "ntfs", NULL };
-    char dev[32];
-    if (usb_disk_mounted || !find_usb_block(dev, sizeof(dev))) return;
-    mkdir("/mnt", 0777);
-    mkdir(USB_MNT, 0777);
-    for (int i = 0; fss[i]; i++) {
-        if (mount(dev, USB_MNT, fss[i], MS_NOATIME, NULL) == 0) {
-            usb_disk_mounted = 1;
-            snprintf(usb_dev, sizeof(usb_dev), "%s", dev);
-            snprintf(usb_fs, sizeof(usb_fs), "%s", fss[i]);
-            snprintf(status_msg, sizeof(status_msg), "USB disk %s mounted at " USB_MNT " (%s)", dev, fss[i]);
-            return;
-        }
-    }
-    snprintf(status_msg, sizeof(status_msg), "USB disk %s found, mount failed: %s", dev, strerror(errno));
-}
-
-static void usb_eject(void) {
-    sync();
-    if (usb_disk_mounted) {
-        if (umount(USB_MNT) != 0) umount2(USB_MNT, MNT_DETACH);
-        /* detach the SCSI device so the (stock, outside-chroot) automount can no longer write to it */
-        const char *base = strrchr(usb_dev, '/');
-        if (base) {
-            char sd[8] = {0}, cmd[96];
-            snprintf(sd, sizeof(sd), "%.3s", base + 1);
-            snprintf(cmd, sizeof(cmd), "echo 1 > /sys/block/%s/device/delete 2>/dev/null", sd);
-            system(cmd);
-        }
-    }
-    usb_disk_mounted = 0;
-    usb_dev[0] = 0;
-    usb_seen_ms = 0;
-}
 
 static void run_net(const char *arg) {
     const char *dir = getenv("USBMODE_PAK_DIR");
@@ -186,14 +119,10 @@ static void save_boot_config(void) {
 }
 
 static void apply_usb_config(void) {
-    if (usb_disk_mounted && cur_role != ROLE_HOST) usb_eject();
+    if (cur_role != ROLE_HOST) uh_eject_all();
     if (cur_role == ROLE_HOST) {
-        system("echo '' > " GADGET_DIR "/UDC 2>/dev/null");
-        system("killall -TERM umsd.elf 2>/dev/null");
-        system("cat /sys/devices/platform/soc@3000000/soc@3000000:usbc0@0/usb_null >/dev/null 2>&1");
-        usleep(200000);
-        system("cat /sys/devices/platform/soc@3000000/soc@3000000:usbc0@0/usb_host >/dev/null 2>&1");
-        snprintf(status_msg, sizeof(status_msg), "OTG Host: use a POWERED hub (port has no 5V). Waiting for USB disk...");
+        uh_set_host();
+        snprintf(status_msg, sizeof(status_msg), "USB Host ON (ADB/USB gadget unavailable while Host is on)");
         return;
     }
 
@@ -283,9 +212,208 @@ static void apply_usb_config(void) {
     }
 }
 
+
+/* ===================== USB Host (OTG) sub page ===================== */
+static void host_set_enabled(int on) {
+    if (on) { cur_role = ROLE_HOST; cur_storage = STORAGE_OFF; }
+    else    { cur_role = ROLE_DEVICE; }
+    if (!on) uh_eject_all();
+    memset(uh_mnts, 0, sizeof(uh_mnts));
+    uh_ndev = 0;
+    apply_usb_config();
+}
+
+/* one text line describing a device row */
+static void host_dev_line(const UhDev *u, char *out, size_t n) {
+    char extra[64] = "";
+    if (u->cls == UC_STORAGE) {
+        int nm = 0, mounted = 0, failed = 0;
+        unsigned long long mb = 0;
+        for (int i = 0; i < UH_MAX_MNT; i++)
+            if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) {
+                nm++; mounted += uh_mnts[i].mounted; mb += uh_mnts[i].mb;
+                if (!uh_mnts[i].mounted && uh_mnts[i].tries >= 5) failed++;
+            }
+        if (!nm) snprintf(extra, sizeof(extra), " - reading...");
+        else if (mounted == nm) snprintf(extra, sizeof(extra), " - mounted (%llu MB)", mb);
+        else if (failed) snprintf(extra, sizeof(extra), " - mount failed");
+        else snprintf(extra, sizeof(extra), " - mounting...");
+    }
+    snprintf(out, n, "[%s] %s%s", uh_cls_name(u->cls), u->name, extra);
+}
+
+/* detail text for the footer (for the selected device) */
+static void host_dev_detail(const UhDev *u, char *out, size_t n) {
+    snprintf(out, n, "%s  %s  %s Mbps", u->path, u->vidpid, u->speed[0] ? u->speed : "?");
+    if (u->cls == UC_STORAGE)
+        for (int i = 0; i < UH_MAX_MNT; i++)
+            if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) {
+                size_t l = strlen(out);
+                if (uh_mnts[i].mounted) snprintf(out + l, n - l, " | %s:%s -> %s", uh_mnts[i].dev, uh_mnts[i].fs, uh_mnts[i].mnt);
+                else if (uh_mnts[i].err[0]) snprintf(out + l, n - l, " | %s: %s", uh_mnts[i].dev, uh_mnts[i].err);
+                break;
+            }
+}
+
+static void run_host_page(SDL_Surface *screen) {
+    int sel = 0, quit = 0, dirty = 1, show_setting = 0;
+    uint32_t last_ms = 0;
+    char sig_prev[1024] = "";
+    char hint[160] = "Needs a SELF-POWERED hub: this port gives no 5V";
+
+    while (!quit) {
+        GFX_startFrame();
+        PAD_poll();
+        uint32_t now = SDL_GetTicks();
+
+        if (cur_role == ROLE_HOST && (now - last_ms > 1000 || last_ms == 0)) {
+            last_ms = now ? now : 1;
+            uh_refresh(now);
+            char sig[1024] = "";
+            for (int i = 0; i < uh_ndev; i++) { char ln[160]; host_dev_line(&uh_devs[i], ln, sizeof(ln)); strncat(sig, ln, sizeof(sig) - strlen(sig) - 2); strcat(sig, "|"); }
+            if (strcmp(sig, sig_prev)) { snprintf(sig_prev, sizeof(sig_prev), "%s", sig); dirty = 1; }
+        }
+
+        int nrows = 1 + (cur_role == ROLE_HOST ? uh_ndev : 0) + 1;   /* toggle, devices, back */
+        if (sel >= nrows) sel = nrows - 1;
+        int is_dev_row = (sel >= 1 && sel <= (cur_role == ROLE_HOST ? uh_ndev : 0));
+
+        if (PAD_justRepeated(BTN_UP) || PAD_justPressed(BTN_UP)) { sel = (sel - 1 + nrows) % nrows; dirty = 1; }
+        else if (PAD_justRepeated(BTN_DOWN) || PAD_justPressed(BTN_DOWN)) { sel = (sel + 1) % nrows; dirty = 1; }
+        else if (PAD_justPressed(BTN_LEFT) || PAD_justPressed(BTN_RIGHT) || PAD_justPressed(BTN_A)) {
+            dirty = 1;
+            if (sel == 0) {
+                int on = (cur_role != ROLE_HOST);
+                snprintf(hint, sizeof(hint), on ? "Switching to USB Host..." : "Ejecting and switching back to device mode...");
+                GFX_clear(screen);
+                GFX_blitMessage(font.large, hint, screen, &(SDL_Rect){0, 0, screen->w, screen->h});
+                GFX_flip(screen);
+                host_set_enabled(on);
+                last_ms = 0;
+                snprintf(hint, sizeof(hint), on ? "Host ON. Plug a self-powered hub / device." : "Host OFF (device mode restored)");
+            } else if (sel == nrows - 1) {
+                if (PAD_justPressed(BTN_A)) quit = 1;
+            } else if (is_dev_row) {
+                const UhDev *u = &uh_devs[sel - 1];
+                if (u->cls == UC_STORAGE && u->disk[0]) {
+                    int any = 0;
+                    for (int i = 0; i < UH_MAX_MNT; i++)
+                        if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) any |= uh_mnts[i].mounted;
+                    if (any) {
+                        uh_eject_disk(u->disk);
+                        snprintf(hint, sizeof(hint), "%s ejected - safe to unplug (replug to mount again)", u->disk);
+                    } else {                      /* retry mounting */
+                        for (int i = 0; i < UH_MAX_MNT; i++)
+                            if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) { uh_mnts[i].tries = 0; uh_mnts[i].first_ms = 0; uh_mnts[i].last_try_ms = 0; }
+                        snprintf(hint, sizeof(hint), "Retrying mount of %s...", u->disk);
+                    }
+                    last_ms = 0;
+                } else {
+                    snprintf(hint, sizeof(hint), "%s: no action (only storage devices are handled)", uh_cls_name(u->cls));
+                }
+            }
+        } else if (PAD_justPressed(BTN_B)) {
+            quit = 1;
+        }
+
+        PWR_update(&dirty, &show_setting, NULL, NULL);
+
+        if (dirty) {
+            GFX_clear(screen);
+            GFX_blitHardwareGroup(screen, show_setting, 0);
+
+            SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, "USB Host (OTG)", COLOR_GOLD);
+            if (title) {
+                SDL_BlitSurface(title, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
+                SDL_FreeSurface(title);
+            }
+
+            char rows[2 + UH_MAX_DEV][160];
+            int n = 0;
+            snprintf(rows[n++], sizeof(rows[0]), "Host mode: %s", cur_role == ROLE_HOST ? "< ON >" : "< OFF >");
+            if (cur_role == ROLE_HOST) {
+                if (!uh_ndev) snprintf(rows[n++], sizeof(rows[0]), "(no devices - plug a powered hub)");
+                else for (int i = 0; i < uh_ndev; i++) host_dev_line(&uh_devs[i], rows[n++], sizeof(rows[0]));
+            }
+            snprintf(rows[n++], sizeof(rows[0]), "[ Back ]");
+            /* display row -> selectable row index (-1 = non selectable placeholder) */
+            int placeholder = (cur_role == ROLE_HOST && !uh_ndev);
+            for (int i = 0; i < n; i++) {
+                int y = SCALE1(PADDING + (i + 1) * PILL_SIZE);
+                int avail_w = screen->w - SCALE1(PADDING * 2);
+                char disp[160];
+                int tw = GFX_truncateText(font.medium, rows[i], disp, avail_w, SCALE1(BUTTON_PADDING * 2));
+                int mw = MIN(avail_w, tw);
+                int row_index = i;
+                if (i == n - 1) row_index = nrows - 1;                 /* Back */
+                else if (placeholder && i == 1) row_index = -1;        /* "(no devices)" */
+                SDL_Color col = COLOR_WHITE;
+                if (row_index == sel) {
+                    GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), y, mw, SCALE1(PILL_SIZE)});
+                    col = COLOR_BLACK;
+                }
+                SDL_Surface *txt = TTF_RenderUTF8_Blended(font.medium, disp, col);
+                if (txt) {
+                    SDL_BlitSurface(txt, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), y + (SCALE1(PILL_SIZE) - txt->h) / 2});
+                    SDL_FreeSurface(txt);
+                }
+            }
+
+            char foot[200];
+            if (is_dev_row) host_dev_detail(&uh_devs[sel - 1], foot, sizeof(foot));
+            else snprintf(foot, sizeof(foot), "%s", hint);
+            char fdisp[200];
+            GFX_truncateText(font.small, foot, fdisp, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
+            SDL_Surface *st = TTF_RenderUTF8_Blended(font.small, fdisp, COLOR_LIGHT_TEXT);
+            if (st) {
+                SDL_BlitSurface(st, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), screen->h - SCALE1(PADDING + PILL_SIZE + 22)});
+                SDL_FreeSurface(st);
+            }
+
+            GFX_blitButtonGroup((char*[]){ "U/D", "SELECT", "L/R/A", is_dev_row ? "EJECT" : "CHANGE", NULL }, 0, screen, 0, 0);
+            GFX_blitButtonGroup((char*[]){ "B", "BACK", NULL }, 1, screen, 1, 0);
+            GFX_flip(screen);
+            dirty = 0;
+        } else {
+            GFX_sync();
+        }
+    }
+}
+
+/* command line self test (no UI): usbmode.elf --host-test <seconds>
+ * Switches to host, lists devices / mounts storage every 2 s, ejects, restores device mode. */
+static int host_test(int secs) {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    printf("host-test: switching to host for %ds\n", secs);
+    host_set_enabled(1);
+    unsigned t0 = 0;
+    for (int t = 0; t < secs; t += 1) {
+        sleep(1);
+        t0 += 1000;
+        uh_refresh(t0);
+        if (t % 2 == 0) {
+            printf("[t=%ds] %d usb device(s)\n", t, uh_ndev);
+            for (int i = 0; i < uh_ndev; i++) {
+                char ln[160], dt[200];
+                host_dev_line(&uh_devs[i], ln, sizeof(ln));
+                host_dev_detail(&uh_devs[i], dt, sizeof(dt));
+                printf("   %s\n      %s\n", ln, dt);
+            }
+            for (int i = 0; i < UH_MAX_MNT; i++)
+                if (uh_mnts[i].active && uh_mnts[i].mounted) {
+                    printf("   mounted %s -> %s (%s)\n", uh_mnts[i].dev, uh_mnts[i].mnt, uh_mnts[i].fs);
+                    if (t >= 12 && t < 14) { char cmd[128]; snprintf(cmd, sizeof(cmd), "ls -la '%s' | head -12; df '%s'", uh_mnts[i].mnt, uh_mnts[i].mnt); system(cmd); }
+                }
+        }
+    }
+    printf("host-test: restoring device mode\n");
+    host_set_enabled(0);
+    printf("host-test: done\n");
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
+    if (argc >= 2 && !strcmp(argv[1], "--host-test")) return host_test(argc >= 3 ? atoi(argv[2]) : 60);
 
     PWR_setCPUSpeed(CPU_SPEED_MENU);
     SDL_Surface *screen = GFX_init(MODE_MAIN);
@@ -314,21 +442,6 @@ int main(int argc, char *argv[]) {
                 apply_usb_config();
                 snprintf(status_msg, sizeof(status_msg), "USB Storage Ejected by Computer");
                 dirty = 1;
-            }
-        }
-
-        if (cur_role == ROLE_HOST && !usb_disk_mounted) {
-            char dev[32];
-            if (find_usb_block(dev, sizeof(dev))) {
-                if (!usb_seen_ms) usb_seen_ms = now;
-                /* give the system hotplug 3 s, then retry every 2 s */
-                if (now - usb_seen_ms > 3000 && now - usb_try_ms > 2000) {
-                    usb_try_ms = now;
-                    usb_try_mount();
-                    dirty = 1;
-                }
-            } else {
-                usb_seen_ms = 0;
             }
         }
 
@@ -376,9 +489,7 @@ int main(int argc, char *argv[]) {
                     apply_usb_config();
                     break;
                 case ITEM_ROLE:
-                    cur_role = !cur_role;
-                    if (cur_role == ROLE_HOST) cur_storage = STORAGE_OFF;
-                    apply_usb_config();
+                    run_host_page(screen);
                     break;
                 case ITEM_KEEP_BG:
                     keep_bg = !keep_bg;
@@ -431,8 +542,8 @@ int main(int argc, char *argv[]) {
                      cur_net == 1 ? "< ON (+Internet via PC) >" : (cur_net == 2 ? "< ON (Local only) >" : "< OFF >"));
             snprintf(row_buf[ITEM_BOOT_NET], sizeof(row_buf[0]), "Boot USB Network: %s",
                      boot_net ? "< ON >" : "< OFF >");
-            snprintf(row_buf[ITEM_ROLE], sizeof(row_buf[0]), "USB Port Role: %s",
-                     cur_role == ROLE_DEVICE ? "< Device (PC/Mac) >" : (usb_disk_mounted ? "< OTG Host: disk at /mnt/usb >" : "< OTG Host (powered hub) >"));
+            snprintf(row_buf[ITEM_ROLE], sizeof(row_buf[0]), "USB Host (OTG): %s",
+                     cur_role == ROLE_HOST ? "< ON >  (A: devices)" : "< OFF >  (A: open)");
             snprintf(row_buf[ITEM_KEEP_BG], sizeof(row_buf[0]), "On Exit to MinUI: %s",
                      keep_bg ? "< Keep Storage Mounted >" : "< Auto Eject Storage >");
             snprintf(row_buf[ITEM_BOOT_DEFAULT], sizeof(row_buf[0]), "Boot Default: %s",
