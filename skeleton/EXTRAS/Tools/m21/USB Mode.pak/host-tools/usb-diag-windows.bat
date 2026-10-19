@@ -6,6 +6,7 @@ set OUT=%~dp0usb-diag.txt
 where adb >nul 2>nul
 if errorlevel 1 (echo adb was not found in PATH. Run this from the folder that contains adb.exe, or add it to PATH. & pause & exit /b 1)
 adb devices
+echo Running the checks on the device, this takes up to about 1 minute. Please do NOT press Ctrl+C...
 echo ===== Windows ===== > "%OUT%"
 ipconfig | findstr /i "adapter IPv4 Gateway" >> "%OUT%"
 echo ===== device ===== >> "%OUT%"

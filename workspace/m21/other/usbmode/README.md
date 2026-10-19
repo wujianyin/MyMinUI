@@ -7,6 +7,8 @@ Boot Default (+ Boot USB Network).
 Serial and Network are mutually exclusive: the UDC has a single interrupt endpoint. When either is on,
 the device class is set to EF/02/01 (IAD) so Windows binds its inbox drivers (usbser for ACM, usb8023 for RNDIS).
 
+See `FEATURES_AND_ISSUES.md` for a summary of all features, problems/root causes and open items.
+
 ## Files
 - `usbmode.c`   UI (links against MinUI api/platform/utils, see `crt_glibc.c` for the glibc-2.26 start stub)
 - `umsd.c`      FunctionFS mass-storage daemon
