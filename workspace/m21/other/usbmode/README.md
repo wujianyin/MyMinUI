@@ -43,7 +43,7 @@ Build: `make KCFLAGS="-march=armv7-a" M=<dir with kmod/*> modules`, then `strip 
 ## Internet via the host
 `usbnet.sh up` (and `tomato` at boot) set `default via 192.168.7.2` and, if missing, DNS in `/tmp/resolv.conf.auto`.
 The host must NAT: `host-tools/share-internet-macos.sh on` (sudo, pf anchor `com.apple/250.usbshare`) or
-`share-internet-linux.sh on`. Then on the device: `ping -c3 8.8.8.8`, `ping -c3 www.baidu.com`,
+`share-internet-linux.sh on`, or on Windows `share-internet-windows.bat` (admin; WinNAT via `New-NetNat`, not ICS which forces 192.168.137.1 - untested on real hardware). Then on the device: `ping -c3 8.8.8.8`, `ping -c3 www.baidu.com`,
 `printf 'GET / HTTP/1.0\r\nHost: www.baidu.com\r\n\r\n' | nc www.baidu.com 80 | head -5` (adb shell; the stock curl has no protocols).
 
 `kmod/f_rndis.patch`: Call Management `bDataInterface` = real data interface (mainline hardcodes 1). `kmod/f_ncm.patch`: `can_support_ecm` bypass.

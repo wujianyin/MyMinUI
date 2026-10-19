@@ -358,3 +358,10 @@ arm-linux-gnueabihf-strip usbmode.elf'
   测试时用 `chroot /overlay /tmp/dhcpd_mini.elf usb0 192.168.7.1 192.168.7.2`(先把文件拷到 `/overlay/tmp`)。`dhcpd_mini` 现在把收发的 DHCP 报文写到 stderr(即 `/tmp/dhcpd.log`)。
 - 调试手段:在 `f_rndis.c` 的 `rndis_setup`/`rndis_command_complete`/`rndis_set_alt` 里加 `pr_info`;UDC 的 `queue_debug`、`irq_debug`(`/sys/devices/platform/soc@3000000/4100000.udc-controller/`)写 1 可看 ep 队列和中断;
   Mac 上用 libusb 可以读配置描述符、MS OS 字符串/兼容 ID,并手动发 RNDIS INIT(`SEND/GET_ENCAPSULATED_*`)验证设备端控制通路。
+
+## 7.2 Windows 共享上网
+- 现象:Windows 上 RNDIS 能拿到 192.168.7.2,`ping 192.168.7.2` 通,但设备 `ping 8.8.8.8`/`www.baidu.com` 不通——与 Mac 上没开 NAT 时一样,宿主机必须做 NAT。
+- 不用 Windows 自带 ICS:它会把适配器强行改成 192.168.137.1 并自带 DHCP,与设备 192.168.7.x(设备默认路由指向 192.168.7.2)冲突。
+- `host-tools/share-internet-windows.ps1 on|off|status`(`.bat` 双击会自动要管理员权限):自动找 192.168.7.x 的适配器和有默认路由的出口,
+  两者 `Set-NetIPInterface -Forwarding Enabled`,再 `New-NetNat -Name USBShare -InternalIPInterfaceAddressPrefix 192.168.7.0/24`。
+  可能的失败:与 WSL/Docker/Hyper-V 的 NAT 网段重叠、`winnat` 服务未运行、出口是 VPN 虚拟网卡(用 `-Uplink` 指定)。**该脚本未在真机 Windows 上验证。**

@@ -57,7 +57,7 @@
 3. 如需"开机默认 USB 模式",用 `workspace/m21/other/usbmode/tomato.m21` 里的 USB 部分更新 SD 卡根目录的 `tomato`
    (先对照你现有的 `tomato`,**不要直接覆盖**,并用 `sh -n tomato` 检查语法)。
 4. 在 MinUI 的 Tools 里打开 *USB Mode*。USB 网络:电脑端出现一块 "Tina ADB" 以太网卡,自动获得 `192.168.7.2`,`ping 192.168.7.1`。
-5. 想让设备上外网:在电脑上运行 `host-tools/share-internet-macos.sh on`(macOS,需要 sudo)或 `share-internet-linux.sh on`(Linux),
+5. 想让设备上外网:在电脑上运行 `host-tools/share-internet-macos.sh on`(macOS,需要 sudo)或 `share-internet-linux.sh on`(Linux),或在 Windows 上双击 `share-internet-windows.bat`(管理员,用 `New-NetNat` 做 NAT,**不要用系统自带的“Internet 连接共享”**——它会把网卡改成 192.168.137.1 与设备的 192.168.7.x 冲突;Windows 脚本尚未在真机验证),
    然后在设备 `adb shell` 里 `ping -c3 8.8.8.8`、`ping -c3 www.baidu.com`。用完 `... off` 关闭。Windows 请用系统自带的"Internet 连接共享"。
 
 ## 已知问题 / 待办

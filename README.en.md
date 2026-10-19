@@ -31,7 +31,7 @@ FunctionFS mount into the chroot, ECM fallback). Full work log, pitfalls and rem
 - Menu items not yet exercised on the device; `adb_ums_rw` / `off` boot modes untested.
 - Only macOS verified. Windows (RNDIS/NCM) modules compile but are untested and not shipped.
 - Few USB endpoints: ADB + storage + network use all of them; adding USB serial will probably not fit.
-- The device has no WiFi hardware/driver; Internet access needs the host to share its connection (`host-tools/share-internet-*.sh`). The stock `curl` was built with no protocols (`Protocols:` is empty), so test with `ping` or `chroot /overlay /bin/busybox wget` (stock `nc` does not send data). Large-frame (>512 B) corruption over ECM is fixed (4-byte DMA alignment in `u_ether`, see NOTES.md §6.2).
+- The device has no WiFi hardware/driver; Internet access needs the host to share its connection (`host-tools/share-internet-*.sh`; on Windows `share-internet-windows.bat`, WinNAT-based, not the built-in ICS). The stock `curl` was built with no protocols (`Protocols:` is empty), so test with `ping` or `chroot /overlay /bin/busybox wget` (stock `nc` does not send data). Large-frame (>512 B) corruption over ECM is fixed (4-byte DMA alignment in `u_ether`, see NOTES.md §6.2).
 - `dhcpd_mini` hands out a single lease (192.168.7.2) without gateway/DNS options; the device sets its own default route/DNS.
 - The real source of `tomato` was not found in the repo (`build/FULL/m21/tomato` is git-ignored); `tomato.m21` is a copy of the on-device file.
 - The pak is not wired into the workspace makefile; prebuilt `.elf`/`.ko` are committed (build steps are in NOTES.md).
