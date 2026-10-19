@@ -80,6 +80,7 @@ static bool is_link_present(const char *path) {
 }
 
 static void detect_current_state(void) {
+    cur_role = uh_role_is_host() ? ROLE_HOST : ROLE_DEVICE;
     if (is_link_present(GADGET_DIR "/configs/c.1/ffs.ums") && is_process_running("umsd.elf")) {
         if (is_process_running("umsd.elf.*--ro")) cur_storage = STORAGE_RO;
         else cur_storage = STORAGE_RW;
@@ -119,9 +120,10 @@ static void save_boot_config(void) {
 }
 
 static void apply_usb_config(void) {
-    if (cur_role != ROLE_HOST) uh_eject_all();
+    if (cur_role != ROLE_HOST) { uh_daemon_stop(); uh_eject_all_proc(); }
     if (cur_role == ROLE_HOST) {
         uh_set_host();
+        uh_daemon_start();
         snprintf(status_msg, sizeof(status_msg), "USB Host ON (ADB/USB gadget unavailable while Host is on)");
         return;
     }
@@ -217,7 +219,6 @@ static void apply_usb_config(void) {
 static void host_set_enabled(int on) {
     if (on) { cur_role = ROLE_HOST; cur_storage = STORAGE_OFF; }
     else    { cur_role = ROLE_DEVICE; }
-    if (!on) uh_eject_all();
     memset(uh_mnts, 0, sizeof(uh_mnts));
     uh_ndev = 0;
     apply_usb_config();
@@ -260,6 +261,7 @@ static void run_host_page(SDL_Surface *screen) {
     uint32_t last_ms = 0;
     char sig_prev[1024] = "";
     char hint[160] = "Needs a SELF-POWERED hub: this port gives no 5V";
+    if (cur_role == ROLE_HOST) uh_daemon_start();
 
     while (!quit) {
         GFX_startFrame();
@@ -268,7 +270,8 @@ static void run_host_page(SDL_Surface *screen) {
 
         if (cur_role == ROLE_HOST && (now - last_ms > 1000 || last_ms == 0)) {
             last_ms = now ? now : 1;
-            uh_refresh(now);
+            uh_enumerate();
+            uh_state_read();
             char sig[1024] = "";
             for (int i = 0; i < uh_ndev; i++) { char ln[160]; host_dev_line(&uh_devs[i], ln, sizeof(ln)); strncat(sig, ln, sizeof(sig) - strlen(sig) - 2); strcat(sig, "|"); }
             if (strcmp(sig, sig_prev)) { snprintf(sig_prev, sizeof(sig_prev), "%s", sig); dirty = 1; }
@@ -299,12 +302,14 @@ static void run_host_page(SDL_Surface *screen) {
                     int any = 0;
                     for (int i = 0; i < UH_MAX_MNT; i++)
                         if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) any |= uh_mnts[i].mounted;
+                    char cmd[40];
                     if (any) {
-                        uh_eject_disk(u->disk);
-                        snprintf(hint, sizeof(hint), "%s ejected - safe to unplug (replug to mount again)", u->disk);
-                    } else {                      /* retry mounting */
-                        for (int i = 0; i < UH_MAX_MNT; i++)
-                            if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) { uh_mnts[i].tries = 0; uh_mnts[i].first_ms = 0; uh_mnts[i].last_try_ms = 0; }
+                        snprintf(cmd, sizeof(cmd), "eject %s", u->disk);
+                        uh_cmd_send(cmd);
+                        snprintf(hint, sizeof(hint), "Ejecting %s... safe to unplug when it disappears", u->disk);
+                    } else {
+                        snprintf(cmd, sizeof(cmd), "retry %s", u->disk);
+                        uh_cmd_send(cmd);
                         snprintf(hint, sizeof(hint), "Retrying mount of %s...", u->disk);
                     }
                     last_ms = 0;
@@ -390,7 +395,8 @@ static int host_test(int secs) {
     for (int t = 0; t < secs; t += 1) {
         sleep(1);
         t0 += 1000;
-        uh_refresh(t0);
+        uh_enumerate();
+        uh_state_read();
         if (t % 2 == 0) {
             printf("[t=%ds] %d usb device(s)\n", t, uh_ndev);
             for (int i = 0; i < uh_ndev; i++) {
@@ -413,6 +419,7 @@ static int host_test(int secs) {
 }
 
 int main(int argc, char *argv[]) {
+    if (argc >= 2 && !strcmp(argv[1], "--host-daemon")) return uh_daemon_main();
     if (argc >= 2 && !strcmp(argv[1], "--host-test")) return host_test(argc >= 3 ? atoi(argv[2]) : 60);
 
     PWR_setCPUSpeed(CPU_SPEED_MENU);

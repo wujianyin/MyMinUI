@@ -290,6 +290,10 @@ arm-linux-gnueabihf-strip usbmode.elf'
     NTFS 内核驱动只读,rw 失败时退回只读。
   - 在存储设备行按 A:已挂载 → 安全弹出(`sync`、`umount`、`rmdir`、`echo 1 > /sys/block/sdX/device/delete`);未挂载 → 重试挂载。
   - 拔盘:块设备消失后自动 `umount -l` 并清理挂载点。离开 Host(切 OFF、或在主菜单改 Storage/ADB/Serial/Network)都会先弹出所有盘。
+  - **退出 pak 后 Host 仍保持**:Host ON 时会起一个后台守护进程 `usbmode.elf --host-daemon`(pid 文件 `/tmp/usbhost.pid`,状态文件 `/tmp/usbhost.state`,
+    UI→守护进程命令文件 `/tmp/usbhost.cmd`)。守护进程每秒枚举设备并自动挂载/清理,**只要端口还在 host 角色就一直运行**(角色变回 device 时自行退出并弹出所有盘);
+    UI 页面只读状态、发 `eject/retry` 命令。重新进入 pak 时 `detect_current_state()` 读 `otg_role` 还原 Host 状态
+    (旧版本漏了这一步,所以退出重进总显示 device,实际角色并没有被改)。
   - 命令行自测(无需屏幕):`usbhost_selftest.sh <秒数>`(在 pak 目录,后台运行)→ 切 host、每 2 秒列设备/自动挂载并打印前 12 行文件列表 →
     弹出并恢复 device,日志 `/mnt/SDCARD/usbhost_selftest.log`。**无 hub 的空跑已通过**(枚举到机内手柄、切换/恢复正常);
     带 hub + U 盘的挂载、弹出、屏幕页面**尚未实测**。

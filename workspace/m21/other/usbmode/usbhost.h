@@ -20,6 +20,8 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <signal.h>
+#include <time.h>
 
 #define UH_MNT_ROOT   "/mnt/SDCARD/USB"     /* visible both inside the chroot and from the stock side */
 #define UH_MAX_DEV    12
@@ -196,6 +198,24 @@ static unsigned long long uh_sectors(const char *disk, const char *dev) {
     return strtoull(v, NULL, 10);
 }
 
+/* is <mnt> a mount point in our namespace?  returns fs type in fsout */
+static int uh_proc_mounted(const char *mnt, char *fsout, size_t n) {
+    FILE *f = fopen("/proc/mounts", "r");
+    char dev[128], mp[128], fs[32], rest[256];
+    int found = 0;
+    if (!f) return 0;
+    while (fscanf(f, "%127s %127s %31s %255[^\n]\n", dev, mp, fs, rest) == 4)
+        if (!strcmp(mp, mnt)) { found = 1; if (fsout) snprintf(fsout, n, "%s", fs); }
+    fclose(f);
+    return found;
+}
+
+static unsigned uh_now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned)(ts.tv_sec * 1000u + ts.tv_nsec / 1000000u);
+}
+
 static UhMnt *uh_find_mnt(const char *dev) {
     for (int i = 0; i < UH_MAX_MNT; i++) if (uh_mnts[i].active && !strcmp(uh_mnts[i].dev, dev)) return &uh_mnts[i];
     return NULL;
@@ -210,6 +230,7 @@ static UhMnt *uh_new_mnt(const char *dev, const char *disk, unsigned now) {
             snprintf(m->disk, sizeof(m->disk), "%s", disk);
             snprintf(m->mnt, sizeof(m->mnt), UH_MNT_ROOT "/%s", dev);
             m->mb = uh_sectors(disk, dev) / 2048;
+            if (uh_proc_mounted(m->mnt, m->fs, sizeof(m->fs))) m->mounted = 1;   /* e.g. daemon restarted */
             return m;
         }
     return NULL;
@@ -291,15 +312,129 @@ static void uh_eject_disk(const char *disk) {
     if (fd >= 0) { if (write(fd, "1", 1) < 0) { /* ignore */ } close(fd); }
 }
 
-static void uh_eject_all(void) {
-    char done[UH_MAX_MNT][8]; int nd = 0;
-    for (int i = 0; i < UH_MAX_MNT; i++) {
-        if (!uh_mnts[i].active) continue;
-        int seen = 0;
-        for (int j = 0; j < nd; j++) if (!strcmp(done[j], uh_mnts[i].disk)) seen = 1;
-        if (!seen) { snprintf(done[nd++], 8, "%s", uh_mnts[i].disk); }
+/* Stateless eject: works from any process by parsing /proc/mounts for our mount points. */
+static void uh_eject_all_proc(void) {
+    FILE *f = fopen("/proc/mounts", "r");
+    char dev[128], mp[128], fs[32], rest[256];
+    char disks[UH_MAX_MNT][8]; int nd = 0;
+    char mps[UH_MAX_MNT][128]; int nm = 0;
+    if (f) {
+        while (fscanf(f, "%127s %127s %31s %255[^\n]\n", dev, mp, fs, rest) == 4)
+            if (!strncmp(mp, UH_MNT_ROOT "/", strlen(UH_MNT_ROOT) + 1) && nm < UH_MAX_MNT) {
+                snprintf(mps[nm++], 128, "%s", mp);
+                const char *b = strrchr(dev, '/');
+                if (b && !strncmp(b + 1, "sd", 2) && nd < UH_MAX_MNT) {
+                    char dk[8]; snprintf(dk, sizeof(dk), "%.3s", b + 1);
+                    int seen = 0; for (int i = 0; i < nd; i++) if (!strcmp(disks[i], dk)) seen = 1;
+                    if (!seen) snprintf(disks[nd++], 8, "%s", dk);
+                }
+            }
+        fclose(f);
     }
-    for (int j = 0; j < nd; j++) uh_eject_disk(done[j]);
+    sync();
+    for (int i = 0; i < nm; i++) { if (umount(mps[i]) != 0) umount2(mps[i], MNT_DETACH); rmdir(mps[i]); }
+    sync();
+    for (int i = 0; i < nd; i++) {
+        char p[96]; snprintf(p, sizeof(p), "/sys/block/%s/device/delete", disks[i]);
+        int fd = open(p, O_WRONLY);
+        if (fd >= 0) { if (write(fd, "1", 1) < 0) { /* ignore */ } close(fd); }
+    }
+}
+
+/* ---------- background daemon: keeps mounting while the port is in host mode, even after the UI exits ---------- */
+#define UH_PIDFILE "/tmp/usbhost.pid"
+#define UH_STATE   "/tmp/usbhost.state"
+#define UH_CMD     "/tmp/usbhost.cmd"
+
+static int uh_role_is_host(void);
+
+static int uh_daemon_running(void) {
+    FILE *f = fopen(UH_PIDFILE, "r");
+    int pid = 0;
+    if (!f) return 0;
+    if (fscanf(f, "%d", &pid) != 1) pid = 0;
+    fclose(f);
+    return pid > 1 && kill(pid, 0) == 0;
+}
+static void uh_daemon_stop(void) {
+    FILE *f = fopen(UH_PIDFILE, "r");
+    int pid = 0;
+    if (f) { if (fscanf(f, "%d", &pid) != 1) pid = 0; fclose(f); }
+    if (pid > 1) kill(pid, SIGTERM);
+    unlink(UH_PIDFILE);
+    unlink(UH_STATE);
+    usleep(200000);
+}
+static void uh_daemon_start(void) {
+    if (uh_daemon_running()) return;
+    system("/tmp/usbmode.elf --host-daemon >/tmp/usbhost.log 2>&1 &");
+}
+static void uh_cmd_send(const char *line) {      /* UI -> daemon */
+    FILE *f = fopen(UH_CMD, "a");
+    if (f) { fprintf(f, "%s\n", line); fclose(f); }
+}
+static void uh_state_write(void) {
+    FILE *f = fopen(UH_STATE ".tmp", "w");
+    if (!f) return;
+    for (int i = 0; i < UH_MAX_MNT; i++) {
+        UhMnt *m = &uh_mnts[i];
+        if (!m->active) continue;
+        fprintf(f, "%s %s %d %s %d %llu %s\n", m->dev, m->disk, m->mounted, m->fs[0] ? m->fs : "-", m->tries, m->mb, m->err[0] ? m->err : "-");
+    }
+    fclose(f);
+    rename(UH_STATE ".tmp", UH_STATE);
+}
+/* UI side: load the daemon's view into uh_mnts[] */
+static void uh_state_read(void) {
+    FILE *f = fopen(UH_STATE, "r");
+    char line[256];
+    int n = 0;
+    memset(uh_mnts, 0, sizeof(uh_mnts));
+    if (!f) return;
+    while (fgets(line, sizeof(line), f) && n < UH_MAX_MNT) {
+        UhMnt *m = &uh_mnts[n];
+        char fs[16], err[128] = "";
+        int mounted = 0, tries = 0; unsigned long long mb = 0;
+        if (sscanf(line, "%15s %7s %d %15s %d %llu %127[^\n]", m->dev, m->disk, &mounted, fs, &tries, &mb, err) >= 6) {
+            m->active = 1; m->mounted = mounted; m->tries = tries; m->mb = mb;
+            snprintf(m->fs, sizeof(m->fs), "%s", strcmp(fs, "-") ? fs : "");
+            snprintf(m->err, sizeof(m->err), "%s", strcmp(err, "-") ? err : "");
+            snprintf(m->mnt, sizeof(m->mnt), UH_MNT_ROOT "/%s", m->dev);
+            n++;
+        }
+    }
+    fclose(f);
+}
+static void uh_cmd_handle(void) {                  /* daemon side */
+    FILE *f = fopen(UH_CMD, "r");
+    char line[64];
+    if (!f) return;
+    while (fgets(line, sizeof(line), f)) {
+        char cmd[16], arg[16];
+        if (sscanf(line, "%15s %15s", cmd, arg) != 2) continue;
+        if (!strcmp(cmd, "eject")) uh_eject_disk(arg);
+        else if (!strcmp(cmd, "retry"))
+            for (int i = 0; i < UH_MAX_MNT; i++)
+                if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, arg)) { uh_mnts[i].tries = 0; uh_mnts[i].first_ms = 0; uh_mnts[i].last_try_ms = 0; }
+    }
+    fclose(f);
+    unlink(UH_CMD);
+}
+static int uh_daemon_main(void) {
+    if (uh_daemon_running()) return 0;
+    FILE *f = fopen(UH_PIDFILE, "w");
+    if (f) { fprintf(f, "%d\n", (int)getpid()); fclose(f); }
+    memset(uh_mnts, 0, sizeof(uh_mnts));
+    while (uh_role_is_host()) {
+        uh_cmd_handle();
+        uh_refresh(uh_now_ms());
+        uh_state_write();
+        sleep(1);
+    }
+    uh_eject_all_proc();
+    unlink(UH_STATE);
+    unlink(UH_PIDFILE);
+    return 0;
 }
 
 /* ---------- host mode switch (the Type-C port is shared with the USB gadget / ADB!) ---------- */
@@ -315,6 +450,13 @@ static void uh_set_host(void) {
     uh_read_file_trigger("usb_null");
     usleep(200000);
     uh_read_file_trigger("usb_host");
+}
+
+static int uh_role_is_host(void) {
+    char p[128], buf[32];
+    snprintf(p, sizeof(p), UH_OTG_SYS "/otg_role");
+    uh_read_str(p, buf, sizeof(buf));
+    return strstr(buf, "host") != NULL;
 }
 
 #endif
