@@ -256,6 +256,120 @@ static void host_dev_detail(const UhDev *u, char *out, size_t n) {
             }
 }
 
+/* generic list page: title, rows (selectable if sel_enabled), footer, A/B button hints.
+ * Returns when `done` callback condition is handled by caller; this only draws. */
+static void host_draw_list(SDL_Surface *screen, int show_setting, const char *title,
+                           char rows[][200], int n, int sel, const char *foot, char **btn_a) {
+    GFX_clear(screen);
+    GFX_blitHardwareGroup(screen, show_setting, 0);
+    SDL_Surface *t = TTF_RenderUTF8_Blended(font.large, title, COLOR_GOLD);
+    if (t) {
+        SDL_BlitSurface(t, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
+        SDL_FreeSurface(t);
+    }
+    for (int i = 0; i < n; i++) {
+        int y = SCALE1(PADDING + (i + 1) * PILL_SIZE);
+        int avail_w = screen->w - SCALE1(PADDING * 2);
+        char disp[200];
+        int tw = GFX_truncateText(font.medium, rows[i], disp, avail_w, SCALE1(BUTTON_PADDING * 2));
+        int mw = MIN(avail_w, tw);
+        SDL_Color col = COLOR_WHITE;
+        if (i == sel) {
+            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), y, mw, SCALE1(PILL_SIZE)});
+            col = COLOR_BLACK;
+        }
+        SDL_Surface *txt = TTF_RenderUTF8_Blended(font.medium, disp, col);
+        if (txt) {
+            SDL_BlitSurface(txt, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), y + (SCALE1(PILL_SIZE) - txt->h) / 2});
+            SDL_FreeSurface(txt);
+        }
+    }
+    if (foot && foot[0]) {
+        char fdisp[200];
+        GFX_truncateText(font.small, foot, fdisp, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
+        SDL_Surface *st = TTF_RenderUTF8_Blended(font.small, fdisp, COLOR_LIGHT_TEXT);
+        if (st) {
+            SDL_BlitSurface(st, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), screen->h - SCALE1(PADDING + PILL_SIZE + 22)});
+            SDL_FreeSurface(st);
+        }
+    }
+    if (btn_a) GFX_blitButtonGroup(btn_a, 0, screen, 0, 0);
+    GFX_blitButtonGroup((char*[]){ "B", "BACK", NULL }, 1, screen, 1, 0);
+    GFX_flip(screen);
+}
+
+/* details sub page for a storage device (read-only list, B to go back) */
+static void host_show_details(SDL_Surface *screen, const UhDev *u) {
+    char rows[2 + UH_MAX_MNT * 2][200];
+    int n = 0, quit = 0, dirty = 1, show_setting = 0;
+    snprintf(rows[n++], sizeof(rows[0]), "%s", u->name);
+    snprintf(rows[n++], sizeof(rows[0]), "%s  %s  %s Mbps", u->path, u->vidpid, u->speed[0] ? u->speed : "?");
+    int found = 0;
+    for (int i = 0; i < UH_MAX_MNT && n < 2 + UH_MAX_MNT * 2 - 1; i++) {
+        if (!uh_mnts[i].active || strcmp(uh_mnts[i].disk, u->disk)) continue;
+        found = 1;
+        if (uh_mnts[i].mounted)
+            snprintf(rows[n++], sizeof(rows[0]), "%s [%s %llu MB] -> %s", uh_mnts[i].dev, uh_mnts[i].fs, uh_mnts[i].mb, uh_mnts[i].mnt);
+        else
+            snprintf(rows[n++], sizeof(rows[0]), "%s: not mounted (%s)", uh_mnts[i].dev, uh_mnts[i].err[0] ? uh_mnts[i].err : "pending");
+    }
+    if (!found) snprintf(rows[n++], sizeof(rows[0]), "no partitions detected yet");
+    while (!quit) {
+        GFX_startFrame();
+        PAD_poll();
+        if (PAD_justPressed(BTN_B) || PAD_justPressed(BTN_A)) quit = 1;
+        PWR_update(&dirty, &show_setting, NULL, NULL);
+        if (dirty) {
+            host_draw_list(screen, show_setting, "Device details", rows, n, -1, "", NULL);
+            dirty = 0;
+        } else GFX_sync();
+    }
+}
+
+/* A on a storage row: small action menu. Returns 1 if the page should refresh immediately. */
+static int host_storage_menu(SDL_Surface *screen, const UhDev *u, char *hint, size_t hint_n) {
+    int sel = 0, quit = 0, dirty = 1, show_setting = 0, refresh = 0;
+    while (!quit) {
+        int mounted_n = 0, total_n = 0;
+        for (int i = 0; i < UH_MAX_MNT; i++)
+            if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) { total_n++; mounted_n += uh_mnts[i].mounted; }
+        char rows[4][200];
+        snprintf(rows[0], sizeof(rows[0]), "Eject (unmount, safe to unplug)%s", mounted_n ? "" : "  - nothing mounted");
+        snprintf(rows[1], sizeof(rows[1]), "Mount / retry%s", (total_n && mounted_n == total_n) ? "  - already mounted" : "");
+        snprintf(rows[2], sizeof(rows[2]), "Details (mount path, filesystem, size)");
+        snprintf(rows[3], sizeof(rows[3]), "Cancel");
+
+        GFX_startFrame();
+        PAD_poll();
+        if (PAD_justRepeated(BTN_UP) || PAD_justPressed(BTN_UP)) { sel = (sel + 3) % 4; dirty = 1; }
+        else if (PAD_justRepeated(BTN_DOWN) || PAD_justPressed(BTN_DOWN)) { sel = (sel + 1) % 4; dirty = 1; }
+        else if (PAD_justPressed(BTN_B)) quit = 1;
+        else if (PAD_justPressed(BTN_A)) {
+            if (sel == 0) {
+                if (mounted_n) {
+                    char cmd[40]; snprintf(cmd, sizeof(cmd), "eject %s", u->disk); uh_cmd_send(cmd);
+                    snprintf(hint, hint_n, "Ejecting %s... safe to unplug when it disappears", u->disk);
+                    refresh = 1; quit = 1;
+                } else snprintf(hint, hint_n, "%s: nothing is mounted", u->disk), quit = 1;
+            } else if (sel == 1) {
+                char cmd[40]; snprintf(cmd, sizeof(cmd), "retry %s", u->disk); uh_cmd_send(cmd);
+                snprintf(hint, hint_n, "Mounting %s...", u->disk);
+                refresh = 1; quit = 1;
+            } else if (sel == 2) {
+                host_show_details(screen, u);
+                dirty = 1;
+            } else quit = 1;
+        }
+        PWR_update(&dirty, &show_setting, NULL, NULL);
+        if (dirty) {
+            char title[80]; snprintf(title, sizeof(title), "%s", u->name);
+            host_draw_list(screen, show_setting, title, rows, 4, sel, "", (char*[]){ "U/D", "SELECT", "A", "OK", NULL });
+            dirty = 0;
+        } else GFX_sync();
+    }
+    return refresh;
+}
+
 static void run_host_page(SDL_Surface *screen) {
     int sel = 0, quit = 0, dirty = 1, show_setting = 0;
     uint32_t last_ms = 0;
@@ -299,20 +413,9 @@ static void run_host_page(SDL_Surface *screen) {
             } else if (is_dev_row) {
                 const UhDev *u = &uh_devs[sel - 1];
                 if (u->cls == UC_STORAGE && u->disk[0]) {
-                    int any = 0;
-                    for (int i = 0; i < UH_MAX_MNT; i++)
-                        if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) any |= uh_mnts[i].mounted;
-                    char cmd[40];
-                    if (any) {
-                        snprintf(cmd, sizeof(cmd), "eject %s", u->disk);
-                        uh_cmd_send(cmd);
-                        snprintf(hint, sizeof(hint), "Ejecting %s... safe to unplug when it disappears", u->disk);
-                    } else {
-                        snprintf(cmd, sizeof(cmd), "retry %s", u->disk);
-                        uh_cmd_send(cmd);
-                        snprintf(hint, sizeof(hint), "Retrying mount of %s...", u->disk);
-                    }
-                    last_ms = 0;
+                    UhDev ucopy = *u;   /* list may refresh while the menu is open */
+                    if (host_storage_menu(screen, &ucopy, hint, sizeof(hint))) last_ms = 0;
+                    dirty = 1;
                 } else {
                     snprintf(hint, sizeof(hint), "%s: no action (only storage devices are handled)", uh_cls_name(u->cls));
                 }
@@ -375,7 +478,7 @@ static void run_host_page(SDL_Surface *screen) {
                 SDL_FreeSurface(st);
             }
 
-            GFX_blitButtonGroup((char*[]){ "U/D", "SELECT", "L/R/A", is_dev_row ? "EJECT" : "CHANGE", NULL }, 0, screen, 0, 0);
+            GFX_blitButtonGroup((char*[]){ "U/D", "SELECT", "L/R/A", is_dev_row ? "ACTIONS" : "CHANGE", NULL }, 0, screen, 0, 0);
             GFX_blitButtonGroup((char*[]){ "B", "BACK", NULL }, 1, screen, 1, 0);
             GFX_flip(screen);
             dirty = 0;
