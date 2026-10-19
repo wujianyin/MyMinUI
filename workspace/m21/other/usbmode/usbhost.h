@@ -186,7 +186,24 @@ static const char *uh_probe_fs(const char *dev, char *why, size_t whyn) {
     if (!memcmp(b + 0x52, "FAT32   ", 8) || !memcmp(b + 0x36, "FAT", 3) || (b[510] == 0x55 && b[511] == 0xaa && b[0] == 0xeb && b[2] == 0x90 && b[0x0d] != 0))
         return "vfat";
     if (b[1024 + 0x38] == 0x53 && b[1024 + 0x39] == 0xef) return "ext4";   /* ext2/3/4 via fuse2fs */
-    snprintf(why, whyn, "unknown filesystem");
+    /* describe what we found, and keep a dump on the SD card for offline analysis */
+    {
+        FILE *df = fopen("/mnt/SDCARD/usbprobe.txt", "w");
+        if (df) {
+            fprintf(df, "dev=%s n=%d\n", dev, (int)n);
+            for (int i = 0; i < 2048 && i < n; i += 16) {
+                fprintf(df, "%04x:", i);
+                for (int j = 0; j < 16; j++) fprintf(df, " %02x", b[i + j]);
+                fprintf(df, "\n");
+            }
+            fclose(df);
+        }
+    }
+    if (!memcmp(b, "LUKS\xba\xbe", 6)) snprintf(why, whyn, "LUKS encrypted");
+    else if (!memcmp(b, "XFSB", 4)) snprintf(why, whyn, "xfs not supported");
+    else if (b[1024] == 0x10 && b[1025] == 0x20 && b[1026] == 0xf5 && b[1027] == 0xf2) snprintf(why, whyn, "f2fs not supported");
+    else if (!memcmp(b + 1024, "HFS", 3) || (b[1024] == 'H' && (b[1025] == '+' || b[1025] == 'X'))) snprintf(why, whyn, "hfs not supported");
+    else snprintf(why, whyn, "unknown fs b0=%02x%02x%02x%02x m=%02x%02x", b[0], b[1], b[2], b[3], b[1080], b[1081]);
     return NULL;
 }
 
