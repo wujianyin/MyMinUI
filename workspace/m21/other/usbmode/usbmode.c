@@ -616,12 +616,18 @@ static int host_test(int secs) {
 
 extern int TTF_FontLineSkip(const TTF_Font *font);   /* not declared by the bundled SDL_ttf header */
 
-#define UI_VIS      5     /* rows that fit between the title and the button hints (320x240 logical) */
+/* rows that fit between the title and the button hints; derived from the real screen (this device: 1280x720 at scale 2 = 8 rows) */
+static int ui_vis_rows(SDL_Surface *s) {
+    int logical_h = s->h / SCALE1(1);
+    int v = (logical_h - 2 * (PADDING + PILL_SIZE) - 16) / PILL_SIZE;
+    return v < 3 ? 3 : v;
+}
 #define UI_ROW_LEN  160
 
 static void ui_draw_list(SDL_Surface *screen, int show_setting, const char *title_txt,
                          char rows[][UI_ROW_LEN], int n, int sel, int *top,
                          const char *foot, const char *a_label) {
+    const int UI_VIS = ui_vis_rows(screen);
     if (sel < *top) *top = sel;
     if (sel >= *top + UI_VIS) *top = sel - UI_VIS + 1;
     if (*top > n - UI_VIS) *top = n - UI_VIS;
