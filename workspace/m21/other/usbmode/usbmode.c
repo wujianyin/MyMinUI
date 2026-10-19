@@ -300,22 +300,81 @@ static void host_draw_list(SDL_Surface *screen, int show_setting, const char *ti
     GFX_flip(screen);
 }
 
-/* details sub page for a storage device (read-only list, B to go back) */
-static void host_show_details(SDL_Surface *screen, const UhDev *u) {
-    char rows[2 + UH_MAX_MNT * 2][200];
-    int n = 0, quit = 0, dirty = 1, show_setting = 0;
-    snprintf(rows[n++], sizeof(rows[0]), "%s", u->name);
-    snprintf(rows[n++], sizeof(rows[0]), "%s  %s  %s Mbps", u->path, u->vidpid, u->speed[0] ? u->speed : "?");
-    int found = 0;
-    for (int i = 0; i < UH_MAX_MNT && n < 2 + UH_MAX_MNT * 2 - 1; i++) {
-        if (!uh_mnts[i].active || strcmp(uh_mnts[i].disk, u->disk)) continue;
-        found = 1;
-        if (uh_mnts[i].mounted)
-            snprintf(rows[n++], sizeof(rows[0]), "%s [%s %llu MB] -> %s", uh_mnts[i].dev, uh_mnts[i].fs, uh_mnts[i].mb, uh_mnts[i].mnt);
-        else
-            snprintf(rows[n++], sizeof(rows[0]), "%s: not mounted (%s)", uh_mnts[i].dev, uh_mnts[i].err[0] ? uh_mnts[i].err : "pending");
+static const char *host_ifc_name(unsigned c) {
+    switch (c) {
+        case 0x01: return "Audio"; case 0x02: return "CDC"; case 0x03: return "HID"; case 0x07: return "Printer";
+        case 0x08: return "Storage"; case 0x09: return "Hub"; case 0x0a: return "CDC-Data"; case 0x0e: return "Video";
+        case 0xe0: return "Wireless"; case 0xff: return "Vendor"; default: return "Other";
     }
-    if (!found) snprintf(rows[n++], sizeof(rows[0]), "no partitions detected yet");
+}
+
+/* read a sysfs attribute of a USB device into out (trimmed), "-" if missing/empty */
+static void host_attr(const char *path, const char *attr, char *out, size_t n) {
+    char p[128];
+    snprintf(p, sizeof(p), UH_SYS_USB "/%s/%s", path, attr);
+    uh_read_str(p, out, n);
+    if (!out[0]) snprintf(out, n, "-");
+}
+
+/* details sub page for any USB device (read-only list, A/B to go back) */
+static void host_show_details(SDL_Surface *screen, const UhDev *u) {
+    enum { MAXR = 9 };
+    char rows[MAXR][200];
+    int n = 0, quit = 0, dirty = 1, show_setting = 0;
+    char ver[16], pwr[16], ser[48], mf[48], dcl[8], nif[8];
+    host_attr(u->path, "version", ver, sizeof(ver));
+    host_attr(u->path, "bMaxPower", pwr, sizeof(pwr));
+    host_attr(u->path, "serial", ser, sizeof(ser));
+    host_attr(u->path, "manufacturer", mf, sizeof(mf));
+    host_attr(u->path, "bDeviceClass", dcl, sizeof(dcl));
+    host_attr(u->path, "bNumInterfaces", nif, sizeof(nif));
+
+    snprintf(rows[n++], sizeof(rows[0]), "%s", u->name);
+    snprintf(rows[n++], sizeof(rows[0]), "Type: %s%s   ID: %s", uh_cls_name(u->cls), u->cls == UC_INTERNAL ? " (built-in)" : "", u->vidpid);
+    snprintf(rows[n++], sizeof(rows[0]), "Port: %s   Speed: %s Mbps   USB %s", u->path, u->speed[0] ? u->speed : "?", ver);
+    snprintf(rows[n++], sizeof(rows[0]), "Vendor: %s   Power: %s", mf, pwr);
+    snprintf(rows[n++], sizeof(rows[0]), "Serial: %s", ser);
+
+    /* interfaces + bound drivers */
+    {
+        char ln[200] = "";
+        DIR *d = opendir(UH_SYS_USB);
+        struct dirent *e;
+        char pre[40]; snprintf(pre, sizeof(pre), "%s:", u->path);
+        int cnt = 0;
+        while (d && (e = readdir(d))) {
+            if (strncmp(e->d_name, pre, strlen(pre))) continue;
+            char p[160], c[8], lk[160], drv[40] = "none";
+            snprintf(p, sizeof(p), UH_SYS_USB "/%s/bInterfaceClass", e->d_name);
+            uh_read_str(p, c, sizeof(c));
+            snprintf(p, sizeof(p), UH_SYS_USB "/%s/driver", e->d_name);
+            ssize_t k = readlink(p, lk, sizeof(lk) - 1);
+            if (k > 0) { lk[k] = 0; const char *b = strrchr(lk, '/'); snprintf(drv, sizeof(drv), "%s", b ? b + 1 : lk); }
+            size_t l = strlen(ln);
+            snprintf(ln + l, sizeof(ln) - l, "%s%s/%s", cnt ? ", " : "", host_ifc_name((unsigned)strtoul(c, NULL, 16)), drv);
+            cnt++;
+        }
+        if (d) closedir(d);
+        snprintf(rows[n++], sizeof(rows[0]), "Interfaces(%s): %s", nif, cnt ? ln : "-");
+    }
+
+    if (u->cls == UC_STORAGE) {
+        int found = 0;
+        for (int i = 0; i < UH_MAX_MNT && n < MAXR; i++) {
+            if (!uh_mnts[i].active || strcmp(uh_mnts[i].disk, u->disk)) continue;
+            found = 1;
+            if (uh_mnts[i].mounted)
+                snprintf(rows[n++], sizeof(rows[0]), "%s [%s %llu MB] -> %s", uh_mnts[i].dev, uh_mnts[i].fs, uh_mnts[i].mb, uh_mnts[i].mnt);
+            else
+                snprintf(rows[n++], sizeof(rows[0]), "%s: not mounted (%s)", uh_mnts[i].dev, uh_mnts[i].err[0] ? uh_mnts[i].err : "pending");
+        }
+        if (!found && n < MAXR) snprintf(rows[n++], sizeof(rows[0]), "no partitions detected yet");
+    } else if (u->cls == UC_NET && n < MAXR) {
+        snprintf(rows[n++], sizeof(rows[0]), "Network adapter: no driver for it in this kernel unless listed above");
+    } else if (u->cls == UC_HUB && n < MAXR) {
+        snprintf(rows[n++], sizeof(rows[0]), "Hub: devices behind it are listed on the previous page");
+    }
+    (void)dcl;
     while (!quit) {
         GFX_startFrame();
         PAD_poll();
@@ -419,7 +478,9 @@ static void run_host_page(SDL_Surface *screen) {
                     if (host_storage_menu(screen, &ucopy, hint, sizeof(hint))) last_ms = 0;
                     dirty = 1;
                 } else {
-                    snprintf(hint, sizeof(hint), "%s: no action (only storage devices are handled)", uh_cls_name(u->cls));
+                    UhDev ucopy = *u;
+                    host_show_details(screen, &ucopy);
+                    dirty = 1;
                 }
             }
         } else if (PAD_justPressed(BTN_B)) {
@@ -480,7 +541,7 @@ static void run_host_page(SDL_Surface *screen) {
                 SDL_FreeSurface(st);
             }
 
-            GFX_blitButtonGroup((char*[]){ "U/D", "SELECT", "L/R/A", is_dev_row ? "ACTIONS" : "CHANGE", NULL }, 0, screen, 0, 0);
+            GFX_blitButtonGroup((char*[]){ "U/D", "SELECT", "L/R/A", is_dev_row ? (uh_devs[sel - 1].cls == UC_STORAGE ? "ACTIONS" : "DETAILS") : "CHANGE", NULL }, 0, screen, 0, 0);
             GFX_blitButtonGroup((char*[]){ "B", "BACK", NULL }, 1, screen, 1, 0);
             GFX_flip(screen);
             dirty = 0;
