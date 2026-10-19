@@ -134,15 +134,36 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 	done
 	[ -e /sys/kernel/config/usb_gadget/g1/UDC ] && echo "" > /sys/kernel/config/usb_gadget/g1/UDC 2>/dev/null
 	killall -9 adbd 2>/dev/null
+	# usb_boot_mode.cfg: line1 adb_only|adb_ums_rw|adb_ums_ro|ums_rw|ums_ro|off, line2 net|-, line3 serial|-
 	BOOT_USB_MODE="adb_only"
-	if [ -f "/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg" ]; then
-		BOOT_USB_MODE=$(head -n 1 "/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg" | tr -d "\r\n ")
+	BOOT_CFG_NET="-"
+	BOOT_CFG_SERIAL="-"
+	BOOT_CFG="/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg"
+	if [ -f "$BOOT_CFG" ]; then
+		BOOT_USB_MODE=$(sed -n 1p "$BOOT_CFG" | tr -d "\r\n ")
+		BOOT_CFG_NET=$(sed -n 2p "$BOOT_CFG" | tr -d "\r\n ")
+		BOOT_CFG_SERIAL=$(sed -n 3p "$BOOT_CFG" | tr -d "\r\n ")
 	fi
-	echo "Boot USB mode: $BOOT_USB_MODE" >> "$USB_LOG"
-	if [ "$BOOT_USB_MODE" != "off" ]; then
+	BOOT_WANT_ADB=1
+	case "$BOOT_USB_MODE" in off|ums_rw|ums_ro) BOOT_WANT_ADB=0 ;; esac
+	echo "Boot USB mode: $BOOT_USB_MODE net=$BOOT_CFG_NET serial=$BOOT_CFG_SERIAL adb=$BOOT_WANT_ADB" >> "$USB_LOG"
+	UP="/mnt/SDCARD/Tools/m21/USB Mode.pak"
+	G="/sys/kernel/config/usb_gadget/g1"
+	BOOT_USB_NET=0
+	BOOT_NEED_UDC=0
+	[ "$BOOT_WANT_ADB" = "1" ] && BOOT_NEED_UDC=1
+	[ "$BOOT_USB_MODE" != "off" ] || [ "$BOOT_CFG_NET" = "net" ] || [ "$BOOT_CFG_SERIAL" = "serial" ] && BOOT_NEED_UDC=1
+	if [ "$BOOT_NEED_UDC" = "1" ]; then
 		/bin/setusbconfig adb >> "$USB_LOG" 2>&1
 		/bin/adbd -D >> /tmp/adb.log 2>&1 &
-		if [ "$BOOT_USB_MODE" = "adb_ums_rw" ] || [ "$BOOT_USB_MODE" = "adb_ums_ro" ]; then
+		if [ "$BOOT_WANT_ADB" = "0" ]; then
+			sleep 1
+			echo "" > "$G/UDC" 2>/dev/null
+			rm -f "$G/configs/c.1/ffs.adb"
+			killall -9 adbd 2>/dev/null
+		fi
+		case "$BOOT_USB_MODE" in *ums_rw|*ums_ro) BOOT_WANT_UMS=1 ;; *) BOOT_WANT_UMS=0 ;; esac
+		if [ "$BOOT_WANT_UMS" = "1" ]; then
 			G="/sys/kernel/config/usb_gadget/g1"
 			mkdir -p "$G/functions/ffs.ums" /dev/usb-ffs/ums 2>/dev/null
 			moung_check=$(grep "/dev/usb-ffs/ums" /proc/mounts)
@@ -152,7 +173,7 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 			DISK_DEV="/dev/mmcblk0"
 			[ -b "/dev/mmcblk0p1" ] && DISK_DEV="/dev/mmcblk0p1"
 			RO_FLAG=""
-			[ "$BOOT_USB_MODE" = "adb_ums_ro" ] && RO_FLAG="--ro"
+			case "$BOOT_USB_MODE" in *ums_ro) RO_FLAG="--ro" ;; esac
 			mkdir -p ${ROOTFS_MOUNTPOINT}/dev/usb-ffs/ums 2>/dev/null
 			grep -q "${ROOTFS_MOUNTPOINT}/dev/usb-ffs/ums" /proc/mounts || mount -o bind /dev/usb-ffs/ums ${ROOTFS_MOUNTPOINT}/dev/usb-ffs/ums
 			chroot ${ROOTFS_MOUNTPOINT} /tmp/umsd.elf /dev/usb-ffs/ums "$DISK_DEV" --exit-on-eject $RO_FLAG >/tmp/umsd.log 2>&1 &
@@ -163,15 +184,12 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 			sleep 1
 		fi
 		# optional USB network: 2nd line of usb_boot_mode.cfg == "net"; type (ecm|ncm|rndis) in usb_nettype
-		BOOT_USB_NET=0
 		BOOT_NETTYPE=ecm
 		if [ -f "/mnt/SDCARD/.userdata/m21/usb_nettype" ]; then
 			BOOT_NETTYPE=$(head -n 1 /mnt/SDCARD/.userdata/m21/usb_nettype | tr -d "\r\n ")
 		fi
 		case "$BOOT_NETTYPE" in ecm|ncm|rndis) ;; *) BOOT_NETTYPE=ecm ;; esac
-		if [ -f "/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg" ] && [ "$(sed -n 2p /mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg | tr -d '\r\n ')" = "net" ]; then
-			G="/sys/kernel/config/usb_gadget/g1"
-			UP="/mnt/SDCARD/Tools/m21/USB Mode.pak"
+		if [ "$BOOT_CFG_NET" = "net" ]; then
 			echo "" > "$G/UDC" 2>/dev/null
 			lsmod | grep -q "^u_ether_x" || insmod "$UP/modules/u_ether_x.ko" >> "$USB_LOG" 2>&1
 			lsmod | grep -q "^f_${BOOT_NETTYPE}_x" || insmod "$UP/modules/f_${BOOT_NETTYPE}_x.ko" >> "$USB_LOG" 2>&1
@@ -199,9 +217,21 @@ if [ -f ${ROOTFS_MOUNTPOINT}/bin/busybox ]; then
 				fi
 			fi
 		fi
+		# optional USB serial (CDC-ACM -> ttyGS0); exclusive with network (one interrupt endpoint)
+		BOOT_USB_SERIAL=0
+		if [ "$BOOT_CFG_SERIAL" = "serial" ] && [ "$BOOT_USB_NET" != "1" ]; then
+			echo "" > "$G/UDC" 2>/dev/null
+			if sh "$UP/usbnet.sh" serial on >> "$USB_LOG" 2>&1; then
+				BOOT_USB_SERIAL=1
+				echo 0xEF > "$G/bDeviceClass"; echo 0x02 > "$G/bDeviceSubClass"; echo 0x01 > "$G/bDeviceProtocol"
+			fi
+		fi
 		UDC_NAME=$(ls /sys/class/udc 2>/dev/null | head -n 1)
 		if [ -n "$UDC_NAME" ]; then
 			echo "$UDC_NAME" > /sys/kernel/config/usb_gadget/g1/UDC 2>> "$USB_LOG"
+			if [ "$BOOT_USB_SERIAL" = "1" ]; then
+				(while :; do [ -c /dev/ttyGS0 ] && /bin/ash --login </dev/ttyGS0 >/dev/ttyGS0 2>&1; sleep 2; done) &
+			fi
 			if [ "$BOOT_USB_NET" = "1" ]; then
 				if [ -z "$(cat /sys/kernel/config/usb_gadget/g1/UDC)" ]; then
 					echo "${BOOT_NETTYPE} bind failed, falling back" >> "$USB_LOG"

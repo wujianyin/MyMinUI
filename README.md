@@ -35,7 +35,7 @@
 | **共享宿主机上网** | 设备端:USB 网络启动后自动加默认路由 `192.168.7.2` 和 DNS;宿主端用 `host-tools/share-internet-*.sh` 开 NAT | 🟡 设备端已实测(路由/DNS 正确);宿主端 NAT 脚本只做了语法和 dry-run 检查,待真机联网验证 |
 | OTG 角色 | Device(连电脑)/ Host(接手柄、U 盘) | ✅ 已测 |
 | **USB Network 三态** | OFF / ON(设备经 PC 上外网) / ON(仅本地,不设默认路由/DNS) | ✅ 脚本逻辑已实测;🟡 屏幕菜单未实测 |
-| **Boot Default / Boot USB Network** | 开机默认 USB 模式(ADB / ADB+存储 RW / RO / 关闭)以及是否开机启用 USB 网络 | ✅ `adb_only`、`adb_ums_ro`、网络组合已重启实测;✅ `adb_ums_rw` 已重启实测;🟡 `off` 未测(会关闭 USB,需拔 SD 卡恢复配置) |
+| **Boot Defaults(二级菜单)** | 勾选开机默认开启的 USB 功能:ADB、存储(关/RW/RO)、串口、网络(及网络类型);串口与网络互斥 | ✅ `adb_only`、`adb_ums_ro`、网络组合已重启实测;✅ `adb_ums_rw` 已重启实测;🟡 `off` 未测(会关闭 USB,需拔 SD 卡恢复配置) |
 
 实现位置:
 - pak 与二进制:`skeleton/EXTRAS/Tools/m21/USB Mode.pak/`
@@ -48,7 +48,7 @@
 ### 2. 开机钩子 `tomato` 的修复
 `workspace/m21/other/usbmode/tomato.m21` 是设备上 `/mnt/SDCARD/tomato` 的当前版本,相对旧版修了几个 USB 相关问题:
 链接 function 前必须先解绑 UDC;chroot 里要 bind 挂载 `/dev/usb-ffs/ums`;ECM 绑定失败时自动回退。
-开机配置文件 `/.userdata/m21/usb_boot_mode.cfg`:第 1 行 `adb_only | adb_ums_rw | adb_ums_ro | off`,可选第 2 行 `net`。
+开机配置文件 `/.userdata/m21/usb_boot_mode.cfg`:第 1 行 `adb_only | adb_ums_rw | adb_ums_ro | ums_rw | ums_ro | off`,第 2 行 `net` 或 `-`,第 3 行 `serial` 或 `-`(旧的 1~2 行格式仍兼容)。
 
 ## 使用方法(简版)
 

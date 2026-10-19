@@ -20,8 +20,8 @@ MyMinUI(`m21` 平台)跑在 32GB FAT SD 卡上的 `chroot /overlay`(glibc 2.26 �
 | **USB Network (192.168.7.x)** | OFF / ECM | 本次新增;功能经 shell 流程在设备上实测,**菜单 UI 本身未在设备屏幕上点过** |
 | USB Port Role | Device / OTG Host | 已测(早期会话) |
 | On Exit to MinUI | Keep / Auto eject | 已有 |
-| Boot Default | ADB only / ADB+Storage RW / ADB+Storage RO / USB Off | 开机钩子本次修复并实测(见下) |
-| **Boot USB Network** | ON / OFF | 本次新增,开机钩子实测通过 |
+| Boot Defaults(二级菜单) | 勾选框:ADB / Storage(Off,RW,RO) / Serial / Network + Network Type;串口与网络互斥 | 配置文件 3 行:`模式\nnet|-\nserial|-`;tomato 开机实测 serial、net 两种组合通过 |
+| USB Network(二级菜单) | Mode(OFF/+Internet/Local)、Network Type、How to connect(Windows/macOS/Linux 说明页,可滚动) | 进入时把 host-tools 脚本补拷到 SD 根目录 |
 | Return to MinUI | | |
 
 开机实测通过的组合(重启后检查):

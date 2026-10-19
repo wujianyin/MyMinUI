@@ -24,12 +24,10 @@ enum {
     ITEM_STORAGE = 0,
     ITEM_ADB,
     ITEM_SERIAL,
-    ITEM_NETWORK,
-    ITEM_NETTYPE,
+    ITEM_NETWORK,      /* A opens the USB Network sub page */
     ITEM_ROLE,
     ITEM_KEEP_BG,
-    ITEM_BOOT_DEFAULT,
-    ITEM_BOOT_NET,
+    ITEM_BOOT,         /* A opens the Boot Defaults sub page */
     ITEM_EXIT,
     ITEM_COUNT
 };
@@ -45,22 +43,18 @@ enum {
     ROLE_HOST   = 1,
 };
 
-enum {
-    BOOT_ADB_ONLY   = 0,
-    BOOT_ADB_UMS_RW = 1,
-    BOOT_ADB_UMS_RO = 2,
-    BOOT_USB_OFF    = 3,
-};
-
 static int cur_storage = STORAGE_OFF;
 static int cur_adb     = 1;
 static int cur_serial  = 0;
 static int cur_net     = 0;   /* 0=off, 1=on (+internet via PC), 2=on (local only) */
 static int net_type    = 0;   /* 0=ECM (Mac/Linux), 1=NCM (Mac/Linux/Win11), 2=RNDIS (Windows) */
-static int boot_net    = 0;
+/* boot defaults (usb_boot_mode.cfg): adb / storage 0=off 1=rw 2=ro / serial / network */
+static int boot_adb     = 1;
+static int boot_storage = 0;
+static int boot_serial  = 0;
+static int boot_net     = 0;
 static int cur_role    = ROLE_DEVICE;
 static int keep_bg     = 0;
-static int boot_mode   = BOOT_ADB_ONLY;
 static char status_msg[128] = "Ready - Use UP/DOWN & LEFT/RIGHT or A";
 
 
@@ -116,15 +110,15 @@ static void detect_current_state(void) {
 
     FILE *fp = fopen(BOOT_CFG_PATH, "r");
     if (fp) {
-        char buf[64] = {0};
-        if (fgets(buf, sizeof(buf), fp)) {
-            if (strncmp(buf, "adb_ums_rw", 10) == 0) boot_mode = BOOT_ADB_UMS_RW;
-            else if (strncmp(buf, "adb_ums_ro", 10) == 0) boot_mode = BOOT_ADB_UMS_RO;
-            else if (strncmp(buf, "off", 3) == 0) boot_mode = BOOT_USB_OFF;
-            else boot_mode = BOOT_ADB_ONLY;
-        }
-        if (fgets(buf, sizeof(buf), fp) && strncmp(buf, "net", 3) == 0) boot_net = 1;
+        /* line 1: adb_only | adb_ums_rw | adb_ums_ro | ums_rw | ums_ro | off   line 2: net | -   line 3: serial | - */
+        char l1[64] = "", l2[64] = "", l3[64] = "";
+        if (fgets(l1, sizeof(l1), fp) && fgets(l2, sizeof(l2), fp)) fgets(l3, sizeof(l3), fp);
         fclose(fp);
+        boot_adb = !(strncmp(l1, "off", 3) == 0 || strncmp(l1, "ums_r", 5) == 0);
+        boot_storage = strstr(l1, "ums_rw") ? 1 : (strstr(l1, "ums_ro") ? 2 : 0);
+        boot_net = strncmp(l2, "net", 3) == 0;
+        boot_serial = strncmp(l3, "serial", 6) == 0;
+        if (boot_net && boot_serial) boot_serial = 0;
     }
 }
 
@@ -133,11 +127,10 @@ static void save_boot_config(void) {
     mkdir("/mnt/SDCARD/.userdata/m21", 0777);
     FILE *fp = fopen(BOOT_CFG_PATH, "w");
     if (!fp) return;
-    if (boot_mode == BOOT_ADB_UMS_RW) fprintf(fp, "adb_ums_rw\n");
-    else if (boot_mode == BOOT_ADB_UMS_RO) fprintf(fp, "adb_ums_ro\n");
-    else if (boot_mode == BOOT_USB_OFF) fprintf(fp, "off\n");
-    else fprintf(fp, "adb_only\n");
-    if (boot_net && boot_mode != BOOT_USB_OFF) fprintf(fp, "net\n");
+    const char *mode;
+    if (boot_adb) mode = boot_storage == 1 ? "adb_ums_rw" : (boot_storage == 2 ? "adb_ums_ro" : "adb_only");
+    else          mode = boot_storage == 1 ? "ums_rw" : (boot_storage == 2 ? "ums_ro" : "off");
+    fprintf(fp, "%s\n%s\n%s\n", mode, boot_net ? "net" : "-", boot_serial ? "serial" : "-");
     fclose(fp);
     sync();
 }
@@ -617,6 +610,369 @@ static int host_test(int secs) {
     return 0;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Generic scrolling list page + sub pages (USB Network, Boot Defaults, Help) */
+/* ------------------------------------------------------------------------- */
+
+extern int TTF_FontLineSkip(const TTF_Font *font);   /* not declared by the bundled SDL_ttf header */
+
+#define UI_VIS      5     /* rows that fit between the title and the button hints (320x240 logical) */
+#define UI_ROW_LEN  160
+
+static void ui_draw_list(SDL_Surface *screen, int show_setting, const char *title_txt,
+                         char rows[][UI_ROW_LEN], int n, int sel, int *top,
+                         const char *foot, const char *a_label) {
+    if (sel < *top) *top = sel;
+    if (sel >= *top + UI_VIS) *top = sel - UI_VIS + 1;
+    if (*top > n - UI_VIS) *top = n - UI_VIS;
+    if (*top < 0) *top = 0;
+
+    GFX_clear(screen);
+    GFX_blitHardwareGroup(screen, show_setting, 0);
+
+    char tt[96];
+    if (n > UI_VIS) snprintf(tt, sizeof(tt), "%s  (%d/%d)", title_txt, sel + 1, n);
+    else snprintf(tt, sizeof(tt), "%s", title_txt);
+    SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, tt, COLOR_GOLD);
+    if (title) {
+        SDL_BlitSurface(title, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
+        SDL_FreeSurface(title);
+    }
+
+    for (int k = 0; k < UI_VIS && *top + k < n; k++) {
+        int i = *top + k;
+        int y = SCALE1(PADDING + (k + 1) * PILL_SIZE);
+        int avail_w = screen->w - SCALE1(PADDING * 2);
+        char disp[UI_ROW_LEN];
+        int tw = GFX_truncateText(font.medium, rows[i], disp, avail_w, SCALE1(BUTTON_PADDING * 2));
+        int mw = MIN(avail_w, tw);
+        SDL_Color col = COLOR_WHITE;
+        if (i == sel) {
+            GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){SCALE1(PADDING), y, mw, SCALE1(PILL_SIZE)});
+            col = COLOR_BLACK;
+        }
+        SDL_Surface *txt = TTF_RenderUTF8_Blended(font.medium, disp, col);
+        if (txt) {
+            SDL_BlitSurface(txt, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), y + (SCALE1(PILL_SIZE) - txt->h) / 2});
+            SDL_FreeSurface(txt);
+        }
+    }
+
+    if (foot && *foot) {
+        char fd[200];
+        GFX_truncateText(font.tiny, foot, fd, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
+        SDL_Surface *ft = TTF_RenderUTF8_Blended(font.tiny, fd, COLOR_LIGHT_TEXT);
+        if (ft) {
+            SDL_BlitSurface(ft, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING + (UI_VIS + 1) * PILL_SIZE + 1)});
+            SDL_FreeSurface(ft);
+        }
+    }
+
+    GFX_blitButtonGroup((char*[]){ "U/D", "SELECT", "L/R/A", (char*)a_label, NULL }, 0, screen, 0, 0);
+    GFX_blitButtonGroup((char*[]){ "B", "BACK", NULL }, 1, screen, 1, 0);
+    GFX_flip(screen);
+}
+
+/* word-wrap `text` ('\n' separated paragraphs, leading spaces kept as indent) */
+static int wrap_text(TTF_Font *f, const char *text, int max_w, char lines[][200], int max_lines) {
+    int nl = 0;
+    const char *p = text;
+    while (*p && nl < max_lines) {
+        const char *e = strchr(p, '\n');
+        int plen = e ? (int)(e - p) : (int)strlen(p);
+        char para[400];
+        if (plen > (int)sizeof(para) - 1) plen = sizeof(para) - 1;
+        memcpy(para, p, plen); para[plen] = 0;
+        p += (e ? (e - p) + 1 : plen);
+
+        int ind = 0;
+        while (para[ind] == ' ') ind++;
+        char prefix[16] = "";
+        if (ind > 12) ind = 12;
+        memset(prefix, ' ', ind); prefix[ind] = 0;
+        if (!para[ind]) { lines[nl][0] = 0; nl++; continue; }
+
+        char cur[200]; snprintf(cur, sizeof(cur), "%s", prefix);
+        char *save = NULL, *w = strtok_r(para + ind, " ", &save);
+        int first = 1;
+        while (w && nl < max_lines) {
+            char cand[200];
+            snprintf(cand, sizeof(cand), first ? "%s%s" : "%s %s", cur, w);
+            int tw = 0;
+            TTF_SizeUTF8(f, cand, &tw, NULL);
+            if (tw > max_w && !first) {
+                snprintf(lines[nl++], 200, "%s", cur);
+                snprintf(cur, sizeof(cur), "%s  %s", prefix, w);   /* continuation indent */
+                first = 0;
+            } else {
+                snprintf(cur, sizeof(cur), "%s", cand);
+                first = 0;
+            }
+            w = strtok_r(NULL, " ", &save);
+        }
+        if (nl < max_lines) snprintf(lines[nl++], 200, "%s", cur);
+    }
+    return nl;
+}
+
+enum { OS_WINDOWS = 0, OS_MACOS = 1, OS_LINUX = 2, OS_COUNT };
+
+static const char *os_name(int os) { return os == OS_WINDOWS ? "Windows" : (os == OS_MACOS ? "macOS" : "Linux"); }
+
+static const char *help_text(int os) {
+    if (os == OS_WINDOWS)
+        return
+        "Use Network Type NCM (Windows 11) or RNDIS (Windows 10/11). ECM has no Windows driver.\n"
+        "Windows gets 192.168.7.2 automatically, the device is 192.168.7.1.\n"
+        "\n"
+        "Share the PC's Internet with the device:\n"
+        " 1. Plug in USB, set USB Network to ON (+Internet).\n"
+        " 2. Copy share-internet-windows.bat and share-internet-windows.ps1 from the SD card root to the PC (turn on USB Storage, or read the card directly).\n"
+        " 3. Double-click share-internet-windows.bat and allow the administrator prompt. The script finds the USB adapter and shares your Wi-Fi/Ethernet with it.\n"
+        " 4. On the device: adb shell, then ping 8.8.8.8 and ping www.baidu.com.\n"
+        "\n"
+        "Run the .bat again after changing Network Type or re-plugging the cable (Windows creates a new adapter). To stop: share-internet-windows.bat off\n"
+        "\n"
+        "If it does not work, run usb-diag-windows.bat (SD card root) and look at usb-diag.txt.\n"
+        "\n"
+        "USB Serial (ACM) appears as a COM port in Device Manager (Ports).";
+    if (os == OS_MACOS)
+        return
+        "Use Network Type ECM or NCM. RNDIS is not supported on macOS.\n"
+        "A new network interface appears (System Settings > Network). The Mac gets 192.168.7.2 automatically, the device is 192.168.7.1.\n"
+        "\n"
+        "Share the Mac's Internet with the device:\n"
+        " 1. Plug in USB, set USB Network to ON (+Internet).\n"
+        " 2. Copy share-internet-macos.sh from the SD card root to the Mac.\n"
+        " 3. In Terminal run:\n"
+        "      sudo sh share-internet-macos.sh on\n"
+        "    (when the uplink is not auto-detected, e.g. with a VPN: sudo sh share-internet-macos.sh on en0)\n"
+        " 4. On the device: adb shell, then ping 8.8.8.8\n"
+        "\n"
+        "Run it again after changing Network Type or re-plugging. To stop:\n"
+        "      sudo sh share-internet-macos.sh off\n"
+        "\n"
+        "USB Serial (ACM) appears as /dev/cu.usbmodem*; use: screen /dev/cu.usbmodem* 115200";
+    return
+        "Use Network Type ECM or NCM (RNDIS also works). The PC gets 192.168.7.2 automatically, the device is 192.168.7.1.\n"
+        "\n"
+        "Share the PC's Internet with the device:\n"
+        " 1. Plug in USB, set USB Network to ON (+Internet).\n"
+        " 2. Copy share-internet-linux.sh from the SD card root to the PC.\n"
+        " 3. In a terminal run:\n"
+        "      sudo sh share-internet-linux.sh on\n"
+        "    (or name the uplink interface: sudo sh share-internet-linux.sh on wlan0)\n"
+        " 4. On the device: adb shell, then ping 8.8.8.8\n"
+        "\n"
+        "To stop:\n"
+        "      sudo sh share-internet-linux.sh off\n"
+        "\n"
+        "USB Serial (ACM) appears as /dev/ttyACM0; use: screen /dev/ttyACM0 115200";
+}
+
+/* make sure all host scripts are on the SD card root (copy from the pak when missing / outdated) */
+static void ensure_host_tools(void) {
+    const char *dir = getenv("USBMODE_PAK_DIR");
+    char cmd[768];
+    if (!dir || !*dir) dir = "/mnt/SDCARD/Tools/m21/USB Mode.pak";
+    snprintf(cmd, sizeof(cmd),
+             "for f in share-internet-macos.sh share-internet-linux.sh share-internet-windows.bat "
+             "share-internet-windows.ps1 usb-diag.sh usb-diag-windows.bat; do "
+             "s='%s/host-tools/'$f; d=/mnt/SDCARD/$f; [ -f \"$s\" ] || continue; "
+             "cmp -s \"$s\" \"$d\" 2>/dev/null || cp \"$s\" \"$d\"; done 2>/dev/null", dir);
+    system(cmd);
+}
+
+static void run_help_page(SDL_Surface *screen, int os) {
+    static char lines[96][200];
+    int text_w = screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2);
+    int nl = wrap_text(font.tiny, help_text(os), text_w, lines, 96);
+    int lh = TTF_FontLineSkip(font.tiny);
+    if (lh < 8) lh = 12;
+    int y0 = SCALE1(PADDING + PILL_SIZE + 2);
+    int y1 = screen->h - SCALE1(PADDING + PILL_SIZE) - SCALE1(2);
+    int vis = (y1 - y0) / lh;
+    if (vis < 1) vis = 1;
+    int top = 0, maxtop = nl > vis ? nl - vis : 0;
+    int dirty = 1, show_setting = 0, quit = 0;
+
+    while (!quit) {
+        GFX_startFrame();
+        PAD_poll();
+        if (PAD_justPressed(BTN_B) || PAD_justPressed(BTN_A)) quit = 1;
+        else if (PAD_justRepeated(BTN_UP) || PAD_justPressed(BTN_UP)) { if (top > 0) { top--; dirty = 1; } }
+        else if (PAD_justRepeated(BTN_DOWN) || PAD_justPressed(BTN_DOWN)) { if (top < maxtop) { top++; dirty = 1; } }
+        else if (PAD_justPressed(BTN_LEFT)) { top = MAX(0, top - vis + 1); dirty = 1; }
+        else if (PAD_justPressed(BTN_RIGHT)) { top = MIN(maxtop, top + vis - 1); dirty = 1; }
+
+        PWR_update(&dirty, &show_setting, NULL, NULL);
+        if (dirty) {
+            GFX_clear(screen);
+            GFX_blitHardwareGroup(screen, show_setting, 0);
+            char tt[96];
+            snprintf(tt, sizeof(tt), "Connect: %s", os_name(os));
+            if (maxtop > 0) { char t2[96]; snprintf(t2, sizeof(t2), "%s  (%d/%d)", tt, top + 1, maxtop + 1); snprintf(tt, sizeof(tt), "%s", t2); }
+            SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, tt, COLOR_GOLD);
+            if (title) {
+                SDL_BlitSurface(title, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
+                SDL_FreeSurface(title);
+            }
+            for (int k = 0; k < vis && top + k < nl; k++) {
+                const char *ln = lines[top + k];
+                if (!*ln) continue;
+                SDL_Surface *t = TTF_RenderUTF8_Blended(font.tiny, ln, COLOR_WHITE);
+                if (t) {
+                    SDL_BlitSurface(t, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), y0 + k * lh});
+                    SDL_FreeSurface(t);
+                }
+            }
+            GFX_blitButtonGroup((char*[]){ "U/D", "SCROLL", "L/R", "PAGE", NULL }, 0, screen, 0, 0);
+            GFX_blitButtonGroup((char*[]){ "B", "BACK", NULL }, 1, screen, 1, 0);
+            GFX_flip(screen);
+            dirty = 0;
+        } else GFX_sync();
+    }
+}
+
+/* switch network mode (0 off / 1 +internet / 2 local only) and reconfigure the gadget */
+static void net_set_mode(SDL_Surface *screen, int mode) {
+    cur_net = mode;
+    if (cur_net && cur_serial) cur_serial = 0;   /* exclusive: one interrupt endpoint on this UDC */
+    if (cur_net == 2) {
+        mkdir("/mnt/SDCARD/.userdata", 0777);
+        mkdir("/mnt/SDCARD/.userdata/m21", 0777);
+        FILE *nf = fopen(NOSHARE_FLAG, "w");
+        if (nf) fclose(nf);
+    } else {
+        unlink(NOSHARE_FLAG);
+    }
+    cur_role = ROLE_DEVICE;
+    GFX_clear(screen);
+    GFX_blitMessage(font.large, "Applying USB Network...", screen, &(SDL_Rect){0, 0, screen->w, screen->h});
+    GFX_flip(screen);
+    apply_usb_config();
+}
+
+static const char *net_mode_label(void) {
+    return cur_net == 1 ? "< ON (+Internet via PC) >" : (cur_net == 2 ? "< ON (Local only) >" : "< OFF >");
+}
+
+static void run_net_page(SDL_Surface *screen) {
+    enum { R_MODE = 0, R_TYPE, R_HELP, R_BACK, R_COUNT };
+    int sel = 0, top = 0, os = OS_WINDOWS, dirty = 1, show_setting = 0, quit = 0;
+    char foot[200] = "Mode: ON(+Internet) = route via PC. ON(Local only) = no gateway.";
+    ensure_host_tools();
+
+    while (!quit) {
+        GFX_startFrame();
+        PAD_poll();
+        int left = PAD_justPressed(BTN_LEFT), right = PAD_justPressed(BTN_RIGHT), a = PAD_justPressed(BTN_A);
+        if (PAD_justPressed(BTN_B)) quit = 1;
+        else if (PAD_justRepeated(BTN_UP) || PAD_justPressed(BTN_UP)) { sel = (sel + R_COUNT - 1) % R_COUNT; dirty = 1; }
+        else if (PAD_justRepeated(BTN_DOWN) || PAD_justPressed(BTN_DOWN)) { sel = (sel + 1) % R_COUNT; dirty = 1; }
+        else if (left || right || a) {
+            int dir = left ? -1 : 1;
+            dirty = 1;
+            switch (sel) {
+                case R_MODE:
+                    net_set_mode(screen, (cur_net + dir + 3) % 3);
+                    snprintf(foot, sizeof(foot), "%s", status_msg);
+                    break;
+                case R_TYPE:
+                    net_type = (net_type + dir + 3) % 3;
+                    save_net_type();
+                    if (cur_net) { cur_role = ROLE_DEVICE; apply_usb_config(); }
+                    snprintf(foot, sizeof(foot), "Type %s. Re-run the share script on the PC after switching.", net_type_name());
+                    break;
+                case R_HELP:
+                    if (a) run_help_page(screen, os);
+                    else os = (os + dir + OS_COUNT) % OS_COUNT;
+                    break;
+                case R_BACK:
+                    if (a) quit = 1;
+                    break;
+            }
+        }
+
+        PWR_update(&dirty, &show_setting, NULL, NULL);
+        if (dirty) {
+            char rows[R_COUNT][UI_ROW_LEN];
+            snprintf(rows[R_MODE], UI_ROW_LEN, "Mode: %s", net_mode_label());
+            snprintf(rows[R_TYPE], UI_ROW_LEN, "Network Type: < %s >", net_type_label());
+            snprintf(rows[R_HELP], UI_ROW_LEN, "How to connect: < %s >  (A: open)", os_name(os));
+            snprintf(rows[R_BACK], UI_ROW_LEN, "[ Back ]");
+            const char *f = foot;
+            if (sel == R_TYPE) f = "ECM: Mac/Linux  NCM: Mac/Linux/Win11  RNDIS: Windows (Mac: no)";
+            else if (sel == R_HELP) f = "Scripts to share the PC's Internet are in the SD card root";
+            ui_draw_list(screen, show_setting, "USB Network", rows, R_COUNT, sel, &top, f, "CHANGE");
+            dirty = 0;
+        } else GFX_sync();
+    }
+}
+
+static void run_boot_page(SDL_Surface *screen) {
+    enum { B_ADB = 0, B_STORAGE, B_SERIAL, B_NET, B_TYPE, B_BACK, B_COUNT };
+    int sel = 0, top = 0, dirty = 1, show_setting = 0, quit = 0;
+    char foot[200] = "Choose what USB turns on at every boot. Saved automatically.";
+
+    while (!quit) {
+        GFX_startFrame();
+        PAD_poll();
+        int left = PAD_justPressed(BTN_LEFT), right = PAD_justPressed(BTN_RIGHT), a = PAD_justPressed(BTN_A);
+        if (PAD_justPressed(BTN_B)) quit = 1;
+        else if (PAD_justRepeated(BTN_UP) || PAD_justPressed(BTN_UP)) { sel = (sel + B_COUNT - 1) % B_COUNT; dirty = 1; }
+        else if (PAD_justRepeated(BTN_DOWN) || PAD_justPressed(BTN_DOWN)) { sel = (sel + 1) % B_COUNT; dirty = 1; }
+        else if (left || right || a) {
+            int dir = left ? -1 : 1;
+            dirty = 1;
+            switch (sel) {
+                case B_ADB:
+                    boot_adb = !boot_adb;
+                    snprintf(foot, sizeof(foot), boot_adb ? "ADB will start at boot" : "ADB will NOT start at boot (use with care)");
+                    break;
+                case B_STORAGE:
+                    boot_storage = (boot_storage + dir + 3) % 3;
+                    snprintf(foot, sizeof(foot), "SD card shown to the PC at boot: %s",
+                             boot_storage == 1 ? "read-write" : (boot_storage == 2 ? "read-only" : "no"));
+                    break;
+                case B_SERIAL:
+                    boot_serial = !boot_serial;
+                    if (boot_serial && boot_net) { boot_net = 0; snprintf(foot, sizeof(foot), "Serial ON: USB Network turned off (they exclude each other)"); }
+                    else snprintf(foot, sizeof(foot), boot_serial ? "Serial console (ttyGS0) at boot" : "Serial off at boot");
+                    break;
+                case B_NET:
+                    boot_net = !boot_net;
+                    if (boot_net && boot_serial) { boot_serial = 0; snprintf(foot, sizeof(foot), "Network ON: USB Serial turned off (they exclude each other)"); }
+                    else snprintf(foot, sizeof(foot), boot_net ? "USB Network at boot (sharing: see USB Network page)" : "USB Network off at boot");
+                    break;
+                case B_TYPE:
+                    net_type = (net_type + dir + 3) % 3;
+                    save_net_type();
+                    snprintf(foot, sizeof(foot), "Network type: %s", net_type_label());
+                    break;
+                case B_BACK:
+                    if (a) quit = 1;
+                    break;
+            }
+            save_boot_config();
+        }
+
+        PWR_update(&dirty, &show_setting, NULL, NULL);
+        if (dirty) {
+            char rows[B_COUNT][UI_ROW_LEN];
+            snprintf(rows[B_ADB], UI_ROW_LEN, "[%c] ADB Debugging", boot_adb ? 'x' : ' ');
+            snprintf(rows[B_STORAGE], UI_ROW_LEN, "[%c] USB Storage: %s", boot_storage ? 'x' : ' ',
+                     boot_storage == 1 ? "< Read-Write >" : (boot_storage == 2 ? "< Read-Only >" : "< Off >"));
+            snprintf(rows[B_SERIAL], UI_ROW_LEN, "[%c] USB Serial (CDC-ACM)", boot_serial ? 'x' : ' ');
+            snprintf(rows[B_NET], UI_ROW_LEN, "[%c] USB Network", boot_net ? 'x' : ' ');
+            snprintf(rows[B_TYPE], UI_ROW_LEN, "      Network Type: < %s >", net_type_label());
+            snprintf(rows[B_BACK], UI_ROW_LEN, "[ Back ]");
+            ui_draw_list(screen, show_setting, "Boot Defaults", rows, B_COUNT, sel, &top, foot, "TOGGLE");
+            dirty = 0;
+        } else GFX_sync();
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc >= 2 && !strcmp(argv[1], "--host-daemon")) return uh_daemon_main();
     if (argc >= 2 && !strcmp(argv[1], "--host-test")) return host_test(argc >= 3 ? atoi(argv[2]) : 60);
@@ -630,6 +986,7 @@ int main(int argc, char *argv[]) {
     detect_current_state();
 
     int selected = 0;
+    int top = 0;
     int quit = 0;
     int dirty = 1;
     int show_setting = 0;
@@ -659,6 +1016,7 @@ int main(int argc, char *argv[]) {
             dirty = 1;
         } else if (PAD_justPressed(BTN_LEFT) || PAD_justPressed(BTN_RIGHT) || PAD_justPressed(BTN_A)) {
             int dir = PAD_justPressed(BTN_LEFT) ? -1 : 1;
+            int is_a = PAD_justPressed(BTN_A);
             dirty = 1;
 
             switch (selected) {
@@ -683,25 +1041,9 @@ int main(int argc, char *argv[]) {
                     apply_usb_config();
                     if (cur_serial) snprintf(status_msg, sizeof(status_msg), "Serial (CDC-ACM) ON; Network turned off (not enough endpoints)");
                     break;
-                case ITEM_NETTYPE:
-                    net_type = (net_type + dir + 3) % 3;
-                    save_net_type();
-                    if (cur_net) { cur_role = ROLE_DEVICE; apply_usb_config(); }
-                    else snprintf(status_msg, sizeof(status_msg), "Network type: %s", net_type_label());
-                    break;
                 case ITEM_NETWORK:
-                    cur_net = (cur_net + dir + 3) % 3;
-                    if (cur_net && cur_serial) cur_serial = 0;   /* exclusive with serial (one interrupt endpoint) */
-                    if (cur_net == 2) {
-                        mkdir("/mnt/SDCARD/.userdata", 0777);
-                        mkdir("/mnt/SDCARD/.userdata/m21", 0777);
-                        FILE *nf = fopen(NOSHARE_FLAG, "w");
-                        if (nf) fclose(nf);
-                    } else {
-                        unlink(NOSHARE_FLAG);
-                    }
-                    cur_role = ROLE_DEVICE;
-                    apply_usb_config();
+                    if (is_a) run_net_page(screen);
+                    else net_set_mode(screen, (cur_net + dir + 3) % 3);
                     break;
                 case ITEM_ROLE:
                     run_host_page(screen);
@@ -712,18 +1054,11 @@ int main(int argc, char *argv[]) {
                              keep_bg ? "Will keep USB Storage mounted after exiting"
                                      : "Will auto-disconnect USB Storage on exit");
                     break;
-                case ITEM_BOOT_DEFAULT:
-                    boot_mode = (boot_mode + dir + 4) % 4;
-                    save_boot_config();
-                    snprintf(status_msg, sizeof(status_msg), "Saved Boot Default USB Mode");
-                    break;
-                case ITEM_BOOT_NET:
-                    boot_net = !boot_net;
-                    save_boot_config();
-                    snprintf(status_msg, sizeof(status_msg), "Saved Boot USB Network setting");
+                case ITEM_BOOT:
+                    if (is_a) run_boot_page(screen);
                     break;
                 case ITEM_EXIT:
-                    if (PAD_justPressed(BTN_A)) quit = 1;
+                    if (is_a) quit = 1;
                     break;
             }
         } else if (PAD_justPressed(BTN_B)) {
@@ -733,80 +1068,22 @@ int main(int argc, char *argv[]) {
         PWR_update(&dirty, &show_setting, NULL, NULL);
 
         if (dirty) {
-            GFX_clear(screen);
-            GFX_blitHardwareGroup(screen, show_setting, 0);
-
-            /* Title pill */
-            SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, "USB Mode Manager", COLOR_GOLD);
-            if (title) {
-                SDL_BlitSurface(title, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
-                SDL_FreeSurface(title);
-            }
-
-            const char *labels[ITEM_COUNT];
-            char row_buf[ITEM_COUNT][128];
-
-            snprintf(row_buf[ITEM_STORAGE], sizeof(row_buf[0]), "USB Storage (SD Card): %s",
+            char rows[ITEM_COUNT][UI_ROW_LEN];
+            snprintf(rows[ITEM_STORAGE], UI_ROW_LEN, "USB Storage (SD Card): %s",
                      cur_storage == STORAGE_RW ? "< ON (Read-Write) >" :
                      (cur_storage == STORAGE_RO ? "< ON (Read-Only) >" : "< OFF >"));
-            snprintf(row_buf[ITEM_ADB], sizeof(row_buf[0]), "ADB Debugging: %s",
-                     cur_adb ? "< ON >" : "< OFF >");
-            snprintf(row_buf[ITEM_NETTYPE], sizeof(row_buf[0]), "Network Type: < %s >", net_type_label());
-            snprintf(row_buf[ITEM_SERIAL], sizeof(row_buf[0]), "USB Serial (CDC-ACM, ttyGS0): %s",
-                     cur_serial ? "< ON >" : "< OFF >");
-            snprintf(row_buf[ITEM_NETWORK], sizeof(row_buf[0]), "USB Network (192.168.7.x): %s",
-                     cur_net == 1 ? "< ON (+Internet via PC) >" : (cur_net == 2 ? "< ON (Local only) >" : "< OFF >"));
-            snprintf(row_buf[ITEM_BOOT_NET], sizeof(row_buf[0]), "Boot USB Network: %s",
-                     boot_net ? "< ON >" : "< OFF >");
-            snprintf(row_buf[ITEM_ROLE], sizeof(row_buf[0]), "USB Host (OTG): %s",
+            snprintf(rows[ITEM_ADB], UI_ROW_LEN, "ADB Debugging: %s", cur_adb ? "< ON >" : "< OFF >");
+            snprintf(rows[ITEM_SERIAL], UI_ROW_LEN, "USB Serial (CDC-ACM): %s", cur_serial ? "< ON >" : "< OFF >");
+            snprintf(rows[ITEM_NETWORK], UI_ROW_LEN, "USB Network: %s  (A: more)",
+                     cur_net == 1 ? "< ON +Internet >" : (cur_net == 2 ? "< ON Local >" : "< OFF >"));
+            snprintf(rows[ITEM_ROLE], UI_ROW_LEN, "USB Host (OTG): %s",
                      cur_role == ROLE_HOST ? "< ON >  (A: devices)" : "< OFF >  (A: open)");
-            snprintf(row_buf[ITEM_KEEP_BG], sizeof(row_buf[0]), "On Exit to MinUI: %s",
-                     keep_bg ? "< Keep Storage Mounted >" : "< Auto Eject Storage >");
-            snprintf(row_buf[ITEM_BOOT_DEFAULT], sizeof(row_buf[0]), "Boot Default: %s",
-                     boot_mode == BOOT_ADB_ONLY ? "< ADB Only >" :
-                     (boot_mode == BOOT_ADB_UMS_RW ? "< ADB + Storage (RW) >" :
-                     (boot_mode == BOOT_ADB_UMS_RO ? "< ADB + Storage (RO) >" : "< USB Off >")));
-            snprintf(row_buf[ITEM_EXIT], sizeof(row_buf[0]), "[ Return to MinUI ]");
-
-            for (int i = 0; i < ITEM_COUNT; i++) {
-                labels[i] = row_buf[i];
-                int y = SCALE1(PADDING + (i + 1) * PILL_SIZE);
-                int avail_w = screen->w - SCALE1(PADDING * 2);
-                char disp[128];
-                int tw = GFX_truncateText(font.medium, labels[i], disp, avail_w, SCALE1(BUTTON_PADDING * 2));
-                int mw = MIN(avail_w, tw);
-
-                SDL_Color col = COLOR_WHITE;
-                if (i == selected) {
-                    GFX_blitPill(ASSET_WHITE_PILL, screen, &(SDL_Rect){
-                        SCALE1(PADDING), y, mw, SCALE1(PILL_SIZE)
-                    });
-                    col = COLOR_BLACK;
-                }
-                SDL_Surface *txt = TTF_RenderUTF8_Blended(font.medium, disp, col);
-                if (txt) {
-                    SDL_BlitSurface(txt, NULL, screen, &(SDL_Rect){
-                        SCALE1(PADDING + BUTTON_PADDING),
-                        y + (SCALE1(PILL_SIZE) - txt->h) / 2
-                    });
-                    SDL_FreeSurface(txt);
-                }
-            }
-
-            /* Status footer bar above button hints */
-            SDL_Surface *st_txt = TTF_RenderUTF8_Blended(font.small, status_msg, COLOR_LIGHT_TEXT);
-            if (st_txt) {
-                SDL_BlitSurface(st_txt, NULL, screen, &(SDL_Rect){
-                    SCALE1(PADDING + BUTTON_PADDING),
-                    screen->h - SCALE1(PADDING + PILL_SIZE + 22)
-                });
-                SDL_FreeSurface(st_txt);
-            }
-
-            GFX_blitButtonGroup((char*[]){ "U/D", "SELECT", "L/R/A", "CHANGE", NULL }, 0, screen, 0, 0);
-            GFX_blitButtonGroup((char*[]){ "B", "BACK", NULL }, 1, screen, 1, 0);
-
-            GFX_flip(screen);
+            snprintf(rows[ITEM_KEEP_BG], UI_ROW_LEN, "On Exit to MinUI: %s",
+                     keep_bg ? "< Keep Storage >" : "< Auto Eject >");
+            snprintf(rows[ITEM_BOOT], UI_ROW_LEN, "Boot Defaults  (A: choose)");
+            snprintf(rows[ITEM_EXIT], UI_ROW_LEN, "[ Return to MinUI ]");
+            ui_draw_list(screen, show_setting, "USB Mode Manager", rows, ITEM_COUNT, selected, &top,
+                         status_msg, "CHANGE");
             dirty = 0;
         } else {
             GFX_sync();
