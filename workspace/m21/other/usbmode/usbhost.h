@@ -261,11 +261,30 @@ static void uh_umount_one(UhMnt *m) {
     m->mounted = 0;
 }
 
+/* The sunxi EHCI fails (hostbyte=0x07, resets, or even silently returns garbage) for multi-segment
+ * bulk reads on some sticks. Cap the request size to one page so every request is a single segment. */
+static void uh_tune_disk(const char *disk) {
+    char p[96], cur[16];
+    snprintf(p, sizeof(p), "/sys/block/%s/queue/max_sectors_kb", disk);
+    if (!uh_read_str(p, cur, sizeof(cur)) || !strcmp(cur, "4")) return;
+    int fd = open(p, O_WRONLY);
+    if (fd >= 0) { if (write(fd, "4", 1) < 0) { /* ignore */ } close(fd); }
+}
+
+static void uh_drop_caches(void) {
+    int fd;
+    sync();
+    fd = open("/proc/sys/vm/drop_caches", O_WRONLY);
+    if (fd >= 0) { if (write(fd, "3", 1) < 0) { /* ignore */ } close(fd); }
+}
+
 static void uh_try_mount(UhMnt *m, unsigned now) {
     char dev[32], why[64];
     m->last_try_ms = now;
     m->tries++;
     snprintf(dev, sizeof(dev), "/dev/%s", m->dev);
+    uh_tune_disk(m->disk);
+    if (m->tries > 1) uh_drop_caches();      /* forget pages filled by earlier failed/garbled reads */
     const char *fs = uh_probe_fs(dev, why, sizeof(why));
     if (!fs) { snprintf(m->err, sizeof(m->err), "%s", why); return; }
     mkdir("/mnt", 0777); mkdir("/mnt/SDCARD", 0777); mkdir(UH_MNT_ROOT, 0777); mkdir(m->mnt, 0777);
@@ -314,6 +333,7 @@ static void uh_refresh(unsigned now) {
         UhDev *u = &uh_devs[i];
         if (u->cls != UC_STORAGE || !u->disk[0]) continue;
         char dp[48]; int nparts = 0;
+        uh_tune_disk(u->disk);
         snprintf(dp, sizeof(dp), "/sys/block/%s", u->disk);
         DIR *d = opendir(dp);
         if (d) {

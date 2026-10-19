@@ -319,3 +319,11 @@ arm-linux-gnueabihf-strip usbmode.elf'
   `/proc/1/root/lib/ld-musl-armhf.so.1 --library-path /mnt/SDCARD/m21/libmusl:/proc/1/root/usr/lib:/proc/1/root/lib /mnt/SDCARD/m21/binmusl/fuse2fs <dev> <mnt> -o rw,noatime`(失败回退 ro)。
   用 64MB ext4 镜像在设备 chroot 内实测读写正常。
 - 限制:fuse2fs 1.43 不写日志(journal);需要日志恢复的盘会挂载失败(界面显示 fuse2fs 的错误行),需在电脑上 fsck。
+
+### 某些 U 盘读取报错 / 读到乱数据(hostbyte=0x07)
+- 现象:58.5GB 三分区"Mass Storage Device"(FAT/ext?/NTFS)经 hub 接入,`dmesg` 出现大量 `UNKNOWN(0x2003) hostbyte=0x07`、
+  `usb 3-1.1: reset high-speed USB device ... using sunxi-ehci`,失败的 READ(10) 都是 16KB/32KB(phys_seg 3~8,多段 scatter-gather);
+  探测 `/dev/sda2` 偶尔读到 `USBC` 开头的 CBW 数据(缓冲区被 CBW 污染)。小块读(分区表、FAT 引导)正常。
+- 推测:sunxi-ehci 对多段批量传输处理有问题。对策:守护进程在发现磁盘时把 `/sys/block/<sd>/queue/max_sectors_kb` 压到 4,
+  让每个请求只含一个物理段,并且重试挂载时 `sync; echo 3 > /proc/sys/vm/drop_caches` 丢弃被污染的缓存页。
+- 探测失败时会把分区头 2KB 十六进制写到 `/mnt/SDCARD/usbprobe.txt`,便于离线分析。
