@@ -110,3 +110,11 @@ M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`
 - 这个版本的 `sunxi-fel` **没有实现 R528 的 SPI 支持**(`spiflash-info`/`spiflash-read` 报 `SPI support not implemented yet for 1859 (R528)`),所以不能直接通过 FEL 读写 SPI NOR。真要救砖,需要先通过 FEL 上传自制的 SPI 读写小程序,**尚未实现、尚未验证**。
 - 仍未验证:Flash 内容损坏后,上电能否**自动**进入 FEL;没有电源键,无法"按键上电进 FEL",手动进入需要短接 SPI NOR 引脚或用 TF 卡启动,两者都未调查。
 - 结论:FEL 通道可用,但"刷坏了一定能救回来"这件事**仍没有保障**。不建议在做出可用的 FEL 救砖流程前写 Flash。
+
+
+## 补充 4:通过 FEL 读 SPI NOR 已跑通(2026-10-20,只读)
+
+- 给 `sunxi-tools`(基线提交 `4ab7b32`)的 `fel-spiflash.c` 打补丁,加上 R528/D1/T113(`0x1859`)的 SPI0 支持:SPI0 基址 `0x04025000`、CCU `0x02001000`、GPIO `0x02000000`(端口步长 0x30)、引脚 PC2~PC7 功能 2,并把引脚复用的掩码从 3 位改成 4 位(BROM 把 PC 脚留在 `0xf`,3 位掩码会写出非法的 `0xa`)。补丁见 [sunxi-fel-r528-spi.patch](sunxi-fel-r528-spi.patch),用法:`git apply` 后 `make sunxi-fel`。
+- 实测 `sunxi-fel spiflash-info`:Manufacturer `85h`(Puya),model `20h`,**容量 16 MiB**。`mtd0` 的 1 MiB 只是整颗 SPI NOR 的第一个分区。
+- `sunxi-fel spiflash-read 0 0x1000000 <out>` 读出整颗 16 MiB,与仓库 `firmware/sjgam-m22pro/images/` 里 5 个分区镜像(uboot/env/boot/boot-resource/rootfs)**逐字节一致**,尾部全是 `0xff`。完整备份保存在 `~/Desktop/mtd_dump/spi_full_16M_fel.bin`,SHA256 `76aa79b7…ec42a`。
+- 所以:**设备在 Linux 起不来时,只要能进 FEL,就能把整颗 SPI NOR 读出/比对。写入路径(`spiflash-write`,擦除+页编程)尚未测试**,Puya 不在工具的已知芯片表里,会按默认的 4 KiB 擦除 `0x20` 和 256 字节页编程 `0x02` 处理,需要先在一个无关紧要的区域(如文件尾部 `0xff` 区)做写入/回读验证后才能信赖。
