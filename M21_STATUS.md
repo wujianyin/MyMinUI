@@ -98,7 +98,7 @@
 ### 4.2 显示与撕裂
 - M22Pro 内置屏原厂设备树把刷新率设成 **38fps**;M21 约 50fps。vsync 一旦打开帧率就被拖到这个数值,所以**内置屏上 vsync 被强制关闭** [作者],只靠双缓冲减轻撕裂,**仍可能看到撕裂**。
 - 我们设备 [实测]:`ref_fps:38`,说明用的是原厂设备树,没有改过。
-- 作者记录了修改设备树达到 60fps 的方法(`workspace/m21/other/dtb_60fps/Readme.md`):提取 `mtdblock0`、改 `lcd0` 节点的时序、重新编译,再用 `dd` 写回 `/dev/mtdblock0`。**只对 M22Pro 有效,M21 刷了会变砖**;刷 SPI NOR 本身有变砖风险。启动脚本通过 `fps:38` 判断是否已打过补丁(`NEWDTB` 环境变量)。
+- 作者记录了修改设备树达到 60fps 的方法(`workspace/m21/other/dtb_60fps/Readme.md`):提取 `mtdblock0`、改 `lcd0` 节点的时序、重新编译,再用 `dd` 写回 `/dev/mtdblock0`。**只对 M22Pro 有效,M21 刷了会变砖**;刷 SPI NOR 本身有变砖风险。启动脚本通过 `fps:38` 判断是否已打过补丁(`NEWDTB` 环境变量)。**发布包不含刷写工具**(已核对 20260118/0126/0208 三个 m21 包和 git 历史),只有这份手动步骤和上述检测逻辑;作者 Readme 里提到的 "modified tomato script" 是自用,未发布。2026-10-20 已在设备上只读核对:`mtdblock0` 与仓库镜像 SHA256 一致、屏幕为 hx8399、运行中设备树时序与补丁假设一致,详见 [RISK_ASSESSMENT.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) 补充章节。
 - issue #80(M22Pro,NES 画面撕裂/声音):作者建议内置屏关掉 tearing 设置,同步参考选 `Core` 或 `NoFix`;用户反馈 `Core` 最好 [作者]。
 - issue #71:动作键按下时闪屏,与作弊码初始化有关,2025-12-23 版修复。
 

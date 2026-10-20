@@ -76,3 +76,27 @@ M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`
 - **仍然存在的风险**:(1)写闪存本身的断电风险;(2)面板是否接受 972Mbit/s(无数据,只有作者一台设备的成功样本);(3)刷坏后没有已验证的硬件恢复手段。
 - **没有任何已知的、不刷闪存就能试的办法**:`sunxi` 显示驱动的 LCD 时序来自设备树,我们没有发现运行时调节途径 [推断,设备未连接,尚未在 `/sys/class/disp/` 下核对]。
 - 建议:**先在设备上做 §6 的第 1~2 项只读检查**,并确认能否进入 FEL 模式后,再决定是否刷。
+
+
+## 补充 1:上游发布包不含刷写工具(2026-10-20 核实)
+
+下载并检查了 m21 发布包 `20260118b-0`、`20260126b-0`、`20260208b-0`,以及仓库全部 git 历史:
+
+- 包内没有任何 dtb/mtd/flash 相关文件或脚本,`tomato`/`emulationstation` 里只有一行注释掉的 `#export NEWDTB=0`。
+- 上游只有两样东西:`dtb_60fps/Readme.md` 的**手动步骤**,以及提交 `1ec9f1b` 的**检测逻辑**(`launch.sh` 读 `/sys/class/disp/disp/attr/sys`,没有 `fps:38` 则设 `NEWDTB=1`)。
+- Readme 里的 "modified tomato script ... can work even as a tool" 是作者自用的改版,没有随包发布。
+
+所以刷 SPI Flash 没有现成、经过验证的工具,只能自己做,本目录的 `patch_mtd0_60fps.py` 就是这个用途。
+
+## 补充 2:设备只读核对结果(2026-10-20,未写入任何内容)
+
+| 项目 | 结果 |
+|---|---|
+| `/dev/mtdblock0` SHA256 | `852d4d22…c90aa7`,与 `firmware/sjgam-m22pro/images/mtd0_uboot.bin` **完全一致** |
+| 分区 | mtd0 `uboot` 1 MiB、擦除块 4 KiB;mtd1 env 128 KiB;mtd2 boot 4 MiB;mtd4 rootfs |
+| 屏驱动 | dmesg:`hx8399 lcd_panel_init is ok`,确认是 hx8399 |
+| 当前帧率 | `ref_fps:38`,实测 `fps:37.8`,DE 时钟 300 MHz,`err:53` |
+| 运行中设备树 `lcd0@5461000` | dclk=0x5a(**90 MHz**)、ht=1230、vt=1945、1080x1920、4 lane、hbp=32、hspw=8、vbp=7、vspw=6;与 flash 里的 DTB 及补丁脚本的假设一致 |
+| 运行时调时序接口 | `/sys/class/disp/disp/attr/` 只有 `sys xres yres colorbar enhance_* runtime_enable ...`,**没有改 LCD 时序的接口**,`runtime_enable=0`。只能改 flash 里的 DTB,无法先在运行时试验 |
+
+结论:补丁脚本的前提(型号、原始数据、时序)已在真机上全部核实。**唯一没核实的是 FEL 救砖能否进入**,以及 hx8399 能否承受 972 Mbit/s 的 lane 速率;这两项只有刷了才知道,所以仍不建议在没有 FEL 手段前写入。
