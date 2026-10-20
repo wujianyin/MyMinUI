@@ -127,3 +127,13 @@ M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`
 - 恢复过程中出过一次失误:用 `tr` 生成"全 0xff"文件时,因为终端区域设置得到了 UTF-8 的 `c3 bf` 序列,导致 `0xfb0000` 起 16 KiB 被写成了 `c3bf`。随后用 Python 生成真正的 16 KiB `0xff` 写回,再读出整颗 16 MiB,**与刷前的完整备份 SHA256 完全一致(`76aa79b7…ec42a`)**,即已原样恢复。教训:生成测试数据一律用 Python 或 `xxd`,并写后立刻整片回读比对。
 - 结论:**设备进 FEL 后,可以用 `sunxi-fel` 读出、写入、校验整颗 SPI NOR**。因此只要能进 FEL(目前只验证了 Linux 活着时 `reboot efex` 进入),刷坏的设备就有了可用的恢复手段:`spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin`。
 - 仍未验证:Flash 内容损坏、Linux 起不来时,设备能否自动/手动进入 FEL。这是现在唯一剩下的缺口。
+
+
+## 补充 6:已刷入并验证(2026-10-20)
+
+- 方法:`patch_mtd0_60fps.py` 生成补丁镜像(只改 10 字节,落在 `0xde000`、`0xe4000` 两个 4 KiB 扇区),设备 `reboot efex` 进 FEL 后用打了 R528 补丁的 `sunxi-fel spiflash-write` **只写这两个扇区**,再读回整颗 16 MiB 校验:前 1 MiB 与补丁镜像一致,其余 15 MiB 与刷前完整备份一致。补丁镜像存于 `~/Desktop/mtd_dump/mtd0_60hz_patched.bin`。
+- 结果:拨动开关重启后**正常开机**,adb 正常,`ref_fps:60`,实测 `fps:60.2`,`mgr0: 1080x1920`;dmesg 里 `hx8399 lcd_panel_init is ok`;运行中设备树 `lcd_dclk_freq=0xa2`(162 MHz)、`lcd_ht=0x546`、`lcd_vt=0x7e0`。
+- DE 的 `err` 计数在开机后稳定在 81,15 秒内不再增长;SoC 温度约 37.6 ℃(空闲)。
+- `/sys/class/disp/disp/attr/sys` 里不再有 `fps:38`,`launch.sh` 下次启动会设 `NEWDTB=1`,`platform.c` 随之对内屏启用 vsync。
+- 恢复方法(如需回退):`reboot efex` 进 FEL,`sunxi-fel spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin`(整片),或只写 `0xde000`/`0xe4000` 两个扇区的原始内容;万一连 FEL 都进不去,用 CH341 编程器写入同一份备份。
+- 待观察:长时间运行的发热、耗电、有无闪屏;游戏内 vsync 的实际效果(撕裂是否消失、`minarch_prevent_tearing` 等选项是否需要调整)。
