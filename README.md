@@ -62,6 +62,10 @@
 
 ## 已知问题 / 待办
 
+**完全不可用(依据实测):** 设备自带 `curl`(http/https 都不行,编译时无协议);`wget` 访问 https;Windows 下的 ECM 网络类型(无驱动,请用 NCM/RNDIS);macOS 下的 RNDIS(无驱动,请用 ECM/NCM)。
+**可恢复:** ADB 偶发在切换其他开关后失效,在菜单里把 ADB 关掉再打开即可。
+**部分可用:** Windows 共享网络后能 `ping 8.8.8.8` 但域名解析有问题(待查)。完整状态表见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md` §0。
+
 - ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里新增 *USB Host (OTG)* 二级页:开关 Host、列出所有 USB 设备、存储设备自动挂载到 `/mnt/SDCARD/USB/<sdXn>` 并可安全弹出(带供电 hub 实测:FAT32、EXT4、NTFS 的 U 盘可挂载读取,其他 USB 设备可识别)。详见 NOTES.md §6.3。
 - 🟡 菜单显示和二级菜单已在设备屏幕确认;`off` 开机模式和“开机关闭 ADB”组合未测。
 - 🟡 USB 网络:macOS(ECM/NCM)和 Windows(NCM、RNDIS)已实测;Windows 共享上网后域名解析卡住、Mac ECM 大包丢包待查,详见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md`。

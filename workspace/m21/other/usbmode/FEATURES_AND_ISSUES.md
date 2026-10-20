@@ -3,6 +3,36 @@
 范围:2026-10-19 ~ 2026-10-20 这一轮开发(USB Host、ext4、串口/网络的 Windows 支持、共享上网脚本、诊断工具、菜单二级化)。
 细节与调试过程见 `NOTES.md`(§4–§7),使用说明见 `README.md`。
 
+## 0. 功能状态总览(依据用户实测,2026-10-20)
+
+图例:✅ 正常 · ⚠ 部分可用/可恢复 · ❌ **完全不可用**
+
+### ❌ 完全不可用
+| 功能 | 现象 | 原因/说明 |
+|---|---|---|
+| 设备上的 `curl` | http、https 都不行 | 自带 curl 编译时没有任何协议(`Protocols:` 为空),设备工具限制,不是 USB 网络问题 |
+| 设备上 `wget` 访问 https | https 不行(http 可用) | 自带 wget 无 TLS |
+| Windows + ECM 网络类型 | 不可用(预期) | Windows 没有内置 ECM 驱动,Windows 请用 NCM(Win11)或 RNDIS;未专门实测 |
+| macOS + RNDIS 网络类型 | 不可用(预期) | macOS 没有 RNDIS 驱动,只验证到枚举;Mac 请用 ECM 或 NCM |
+
+### ⚠ 部分可用 / 可恢复
+| 功能 | 现象 | 处理方式 |
+|---|---|---|
+| ADB 开关 | 偶发:切换 USB Network、USB Host 等其他开关后 adb 失效 | 在菜单里把 ADB 关掉再打开即可恢复(用户确认);根因未查 |
+| Windows 共享网络(NCM / RNDIS) | 能识别、`ping 8.8.8.8` 通,但 `ping www.baidu.com` 有问题(域名解析) | 未解决,见 §4 第 1 项 |
+| USB Host 的非存储设备 | 只能识别,没验证功能 | 键盘/手柄等未测 |
+| USB Host 供电 | Type-C 不供 5V | 必须用带外部供电的 hub |
+
+### ✅ 正常
+| 功能 | 平台/范围 |
+|---|---|
+| USB Storage(读写/只读) | Windows、macOS 均可挂载读取 |
+| USB Serial(CDC-ACM) | Windows 识别为 COM 口并可进入 shell;开机勾选串口也通过 |
+| USB Network ECM / NCM | macOS 下正常,`ping www.baidu.com` 正常 |
+| USB Network NCM / RNDIS | Windows 可识别并拿到 192.168.7.2 |
+| USB Host(带供电 hub) | FAT32、EXT4、NTFS 的 U 盘可挂载读取;其他 USB 设备可识别 |
+| 菜单(二级菜单、说明页、Boot Defaults) | 设备屏幕显示正常 |
+
 ## 1. 新增功能一览
 
 ### 1.1 USB Host(OTG 主机)子页面
