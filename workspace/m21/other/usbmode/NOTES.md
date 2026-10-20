@@ -209,7 +209,8 @@ arm-linux-gnueabihf-strip usbmode.elf'
 > **状态更新(2026-10-20 晚)**:下面 1–10 是早期清单,部分已完成:
 > 1 已提交(`fork/main`);2 菜单显示/二级菜单已在屏幕确认;4 串口-网络互斥已实现;5 Windows(NCM/RNDIS)已完成并实测(§7);
 > 6 共享上网已完成(Mac/Linux/Windows 脚本,见 §7.2);8 SD 根目录调试文件和脚本副本已清理。
-> 仍待办:Windows 共享后域名解析卡住、Mac ECM 大包丢包、Windows COM 口确认、开机 `off` / 开机关 ADB 组合、USB Host 带供电 hub 重测。
+> 用户实测汇总:Storage(Win+Mac)✅;Serial(Windows COM,可进 shell)✅;NCM/ECM(Mac)含 ping www.baidu.com ✅;Windows RNDIS/NCM 可识别但 ping www.baidu.com 有问题;USB Host 带供电 hub 下 FAT32/EXT4/NTFS 可挂载读取 ✅;wget 只支持 http,curl 无协议。
+> 仍待办:Windows 共享后域名解析卡住、ADB 切换其他开关后偶发失效、Mac ECM 大包丢包、开机 `off` / 开机关 ADB 组合。
 > 完整清单见 `FEATURES_AND_ISSUES.md` §4。
 
 1. **提交到仓库**:`skeleton/.../USB Mode.pak/` 和 `workspace/m21/other/usbmode/` 目前是 untracked。

@@ -28,10 +28,10 @@
 
 | 功能 | 说明 | 状态 |
 |---|---|---|
-| USB Storage | 把 SD 卡作为 U 盘暴露给电脑,可选读写 / 只读(用户态 FunctionFS 实现 `umsd`) | ✅ 已测 |
-| ADB | 开关 adb | ✅ 已测 |
-| USB Serial | CDC-ACM 串口(`ttyGS0` + 登录 shell),Windows/macOS/Linux 免驱 | ✅ 已测(含开机勾选串口);Windows COM 口未专门确认 |
-| **USB Network(二级菜单)** | ECM / NCM / RNDIS 以太网,设备 `192.168.7.1`,电脑通过内置 DHCP 得到 `192.168.7.2`;菜单里带 Windows/macOS/Linux 的“如何连接”说明页 | ✅ macOS(ECM/NCM)、Windows(NCM、RNDIS)实测;✅ 设备屏幕显示和二级菜单已确认 |
+| USB Storage | 把 SD 卡作为 U 盘暴露给电脑,可选读写 / 只读(用户态 FunctionFS 实现 `umsd`) | ✅ Windows、Mac 均可挂载读取 |
+| ADB | 开关 adb | ✅ 已测;⚠ 偶发:切换 USB Network/Host 等开关后 adb 失效,需关再开 |
+| USB Serial | CDC-ACM 串口(`ttyGS0` + 登录 shell),Windows/macOS/Linux 免驱 | ✅ 已测(Windows 识别为 COM 口并可进入 shell;含开机勾选串口) |
+| **USB Network(二级菜单)** | ECM / NCM / RNDIS 以太网,设备 `192.168.7.1`,电脑通过内置 DHCP 得到 `192.168.7.2`;菜单里带 Windows/macOS/Linux 的“如何连接”说明页 | ✅ macOS(ECM/NCM)含 ping www.baidu.com 正常;Windows(NCM、RNDIS)可识别,但共享后 ping www.baidu.com 仍有问题;✅ 设备屏幕显示和二级菜单已确认 |
 | **共享宿主机上网** | 设备端:USB 网络启动后自动加默认路由 `192.168.7.2` 和 DNS;宿主端用 pak 里 `host-tools/` 的 `share-internet-macos.sh` / `share-internet-linux.sh` / `share-internet-windows.bat` 开 NAT | ✅ macOS 实测可上外网;🟡 Windows(`New-NetNat`,不可用时自动回退 ICS)8.8.8.8 通,域名解析卡住待查;Linux 脚本未真机验证 |
 | OTG 角色 | Device(连电脑)/ Host(接手柄、U 盘) | ✅ 已测 |
 | **USB Network 三态** | OFF / ON(设备经 PC 上外网) / ON(仅本地,不设默认路由/DNS) | ✅ 脚本逻辑已实测;✅ 屏幕菜单显示已确认 |
@@ -62,12 +62,12 @@
 
 ## 已知问题 / 待办
 
-- ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里新增 *USB Host (OTG)* 二级页:开关 Host、列出所有 USB 设备、存储设备自动挂载到 `/mnt/SDCARD/USB/<sdXn>` 并可安全弹出(带供电 hub 的挂载:用户实机试过但结果未取到/未分析,待重测)。详见 NOTES.md §6.3。
+- ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里新增 *USB Host (OTG)* 二级页:开关 Host、列出所有 USB 设备、存储设备自动挂载到 `/mnt/SDCARD/USB/<sdXn>` 并可安全弹出(带供电 hub 实测:FAT32、EXT4、NTFS 的 U 盘可挂载读取,其他 USB 设备可识别)。详见 NOTES.md §6.3。
 - 🟡 菜单显示和二级菜单已在设备屏幕确认;`off` 开机模式和“开机关闭 ADB”组合未测。
 - 🟡 USB 网络:macOS(ECM/NCM)和 Windows(NCM、RNDIS)已实测;Windows 共享上网后域名解析卡住、Mac ECM 大包丢包待查,详见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md`。
 - ℹ️ USB 端点有限(3 对 bulk + 1 个 interrupt):串口与网络互斥,菜单(主菜单和 Boot Defaults)会自动关掉另一个并提示;ADB + 存储 + 网络可共存。
 - 🟡 设备本身**没有 WiFi 硬件/驱动**,上外网只能靠宿主机共享(Mac 上已实测可上外网);设备端自带的 `curl` 编译时没有任何协议(`Protocols:` 为空),
-  `https`/`http` 都会报 `Protocol not supported`,自带 `nc` 也不发数据;测试请用 `ping` 或 `chroot /overlay /bin/busybox wget`(见 NOTES.md)。
+  `https`/`http` 都会报 `Protocol not supported`,自带 `nc` 也不发数据;`wget` 只能访问 http,https 不行(用户实测);测试请用 `ping` 或 `wget` 访问 http(见 NOTES.md)。
 - ✅ 已修复:USB 网络大帧(>512 字节)收发损坏——原因是 sunxi UDC 的 DMA 要求 4 字节对齐,`u_ether` 的 `NET_IP_ALIGN` 让数据偏移了 2 字节(NOTES.md §6.2)。
 - ℹ️ `dhcpd_mini` 只发一个固定租约(192.168.7.2),**有意**不下发网关/DNS(它服务的是宿主机,下发会劫持宿主机默认路由);设备端的默认路由/DNS 由 `usbnet.sh up`(和 `tomato`)直接设置。
 - 🟡 仓库里 `tomato` 的真实来源文件还没找到(构建目录 `build/FULL/m21/tomato` 被 `.gitignore` 忽略),

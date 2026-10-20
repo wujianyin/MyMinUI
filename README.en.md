@@ -18,8 +18,8 @@ a hackable device (USB networking/storage/debug), documented low-level internals
 
 | Feature | Status |
 |---|---|
-| Storage / ADB / Serial / OTG role | tested |
-| USB Network (ECM / NCM / RNDIS, sub menu with per-OS help) | tested on macOS (ECM, NCM) and Windows (NCM, RNDIS); menu layout and sub menus verified on the device screen |
+| Storage / ADB / Serial / OTG role | tested (Storage on Windows+macOS; Serial shows up as a COM port on Windows; ADB occasionally stops working after toggling Network/Host - turn it off and on again; open) |
+| USB Network (ECM / NCM / RNDIS, sub menu with per-OS help) | tested on macOS (ECM, NCM) and Windows (NCM, RNDIS); menu layout and sub menus verified on the device screen; on Windows RNDIS/NCM enumerate but `ping www.baidu.com` still has a problem; device `wget` does http only, stock `curl` neither http nor https |
 | Internet via the host | device side done and checked (default route 192.168.7.2 + DNS set automatically); host NAT scripts in the pak's `host-tools/`: macOS verified end to end; Windows (WinNAT, ICS fallback) reaches 8.8.8.8 but DNS name resolution hangs (open); Linux script not verified on hardware |
 | Boot Defaults (sub menu with checkboxes: ADB / Storage / Serial / Network) | `adb_only`, `adb_ums_ro`, `adb_ums_rw`, `adb_only`+`net`, `adb_only`+`serial` tested after reboot; `off` and "ADB disabled at boot" not tested |
 

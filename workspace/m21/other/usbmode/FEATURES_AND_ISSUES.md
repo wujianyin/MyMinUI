@@ -15,6 +15,7 @@
 | 任意设备的详情页 | 类型、VID:PID、端口、速度、USB 版本、厂商、供电、序列号、接口/驱动、挂载点 |
 | ext2/3/4 U 盘 | 通过原厂 `fuse2fs` 挂载(先 rw 再 ro 兜底);vfat/exfat/ntfs(只读)走内核 `mount()` |
 | 未知文件系统诊断 | 无法识别时显示魔数并写 `/mnt/SDCARD/usbprobe.txt` |
+| 实测 | 带供电 hub:FAT32、EXT4、NTFS 的 U 盘均可挂载读取;其他 USB 设备可识别 |
 | 注意 | Type-C 口**不供 5V**,必须用自供电 USB Hub |
 
 ### 1.3 菜单重构(二级菜单,已在设备屏幕上确认显示和操作正常)
@@ -73,12 +74,13 @@
 ## 3. 兼容性/验证矩阵
 | 项目 | Mac | Windows | 说明 |
 |---|---|---|---|
-| USB Storage / ADB | ✅ | ❓ RNDIS 排第一后 ADB 在接口 2,Windows 上是否仍识别 ADB 未专门确认 | |
-| USB Host(U 盘/TF/ext4/Hub) | — | — | 设备作为主机,已在真机验证 |
-| USB 网络 ECM | ✅ | ❌ Windows 无内置 ECM 驱动(预期,未实测) | 仅 Mac/Linux |
-| USB 网络 NCM | ✅ DHCP+ping 大包 | ✅(Win11) | |
-| USB 网络 RNDIS | ❌(Mac 无驱动,只验证枚举/控制通路) | ✅(拿到 192.168.7.2) | 必须 RNDIS 排第一 |
-| USB 串口 CDC-ACM | ✅ 双向收发;用户后续实测串口功能正常(含开机勾选串口) | ❓ Windows COM 口 **未专门确认** | 开机 `adb_only`+`serial` 重启实测通过 |
+| USB Storage | ✅ 挂载读取正常 | ✅ 挂载读取正常 | 用户实测 |
+| ADB | ✅ | ✅(开关正常) | ⚠ 偶发:切换 USB Network / USB Host 等其他开关后 adb 失效,需把 ADB 关了再开(见 §4 第 9 项) |
+| USB Host(U 盘/TF/ext4/Hub) | — | — | ✅ 带供电 hub:FAT32、EXT4、NTFS U 盘可挂载读取,其他 USB 设备可识别(用户实测);Type-C 不供 5V,必须自供电 hub |
+| USB 网络 ECM | ✅ ping www.baidu.com 正常 | ❌ Windows 无内置 ECM 驱动(预期,未实测) | 仅 Mac/Linux |
+| USB 网络 NCM | ✅ DHCP+ping 大包;ping www.baidu.com 正常 | ✅ 可识别(Win11);共享后 ping www.baidu.com 仍有问题 | |
+| USB 网络 RNDIS | ❌(Mac 无驱动,只验证枚举/控制通路) | ✅ 可识别(拿到 192.168.7.2);共享后 ping www.baidu.com 仍有问题 | 必须 RNDIS 排第一 |
+| USB 串口 CDC-ACM | ✅ 双向收发 | ✅ 正确识别为 COM 口,可连接进入类似 adb shell 的界面(用户实测) | 开机 `adb_only`+`serial` 重启实测通过 |
 | 共享上网 | ✅(pf) | 🟡 8.8.8.8 通,域名解析卡住,待查 | |
 | 菜单界面(二级菜单、全屏、说明页、互斥提示) | — | — | ✅ 用户在设备屏幕确认显示和二级菜单正常;运行时切换/绑定失败回退分支未逐项测 |
 
@@ -86,13 +88,14 @@
 1. **Windows 共享后域名解析卡住**:先在 RNDIS/NCM + Windows 共享已 `on` 的状态下完整运行 `usb-diag-windows.bat`(不要 Ctrl+C,约 1 分钟)。
    **切换网络类型后 Windows 会出现新网卡,ICS 绑定的是旧网卡**,必须重新运行 `share-internet-windows.bat on`。
 2. Mac 路径下 `ping -s 1400 8.8.8.8` 100% 丢包(小包正常),`ECM` 模式下观察到;可能是 Mac 侧 NAT/MTU,也可能是大帧问题回归,待确认。
-3. 串口(CDC-ACM)在 Windows 上是否出现 COM 口:未专门确认(串口本身已实测正常)。
+3. 设备端工具的 https 能力:设备上 `wget` 只能访问 http,https 不行;自带 `curl` http/https 都不行(编译时没有任何协议)。这是设备自带工具的限制,不是 USB 网络问题;需要的话另找带 TLS 的 wget/curl 放进 pak。
 4. 菜单:显示和二级菜单已确认;仍未逐项测的是"开机关闭 ADB"组合、开机模式 `off`、绑定失败自动回退分支。
 5. Windows ICS 回退路径、`New-NetNat` 路径:脚本未经完整真机验证(ICS 路径已能让 8.8.8.8 通)。
 6. 58.5GB 三分区 U 盘的传输错误(可能需要按 VID:PID 加 quirks,未尝试)。
 7. `uh_tune_disk` 把 `max_sectors_kb` 限成 4 对该 U 盘无效且更慢,可以去掉。
 8. 设备当前状态:`usb_boot_mode.cfg`=`adb_only`+`net`、`usb_nettype`=`ncm`。SD 根目录的调试文件和 share/diag 脚本副本已清理(脚本只保留在 pak 的 host-tools 里)。
-9. USB Host 带供电 hub + U 盘:用户已实机试过,但设备在 Host 模式下 adb 断开,`/tmp/usbhost.log` 在重启/切回后未取到有效内容,**结果未分析**;需要重测并在切回设备模式后(不重启)读 `/tmp/usbhost.log`、`/tmp/usbhost.state`。
+9. **ADB 偶发失效**:切换 USB Network、USB Host 等其他开关后,偶尔 adb 连不上,需要在菜单里把 ADB 关掉再打开才恢复。未排查;怀疑是 `apply_usb_config()` 解绑/重绑 UDC 时 adbd 的 FunctionFS 端点状态没有跟着重置(假设,未验证)。下次复现时在设备上看 `cat /sys/kernel/config/usb_gadget/g1/UDC`、`ls configs/c.1`、`ps | grep adbd`、`dmesg | tail`。
+10. USB Host 的其余设备(键盘/手柄等)只验证了"能识别",没有验证功能。
 
 ## 5. 相关提交(`fork/main`)
 - USB Host:`4f39fb3` 持久化 · `f8d379e` A 键菜单 · `519994a` 非破坏性弹出 · `74ef8f7` 设备详情 · `33573a8` ext2/3/4 · `3f31bb9` 未知文件系统诊断 · `791087a` 读取参数
