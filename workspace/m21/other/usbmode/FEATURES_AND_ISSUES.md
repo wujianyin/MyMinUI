@@ -1,6 +1,6 @@
 # USB Mode.pak(m21)新增功能与问题点总结
 
-范围:2026-10-19 ~ 2026-10-20 这一轮开发(USB Host、ext4、串口/网络的 Windows 支持、共享上网脚本、诊断工具)。
+范围:2026-10-19 ~ 2026-10-20 这一轮开发(USB Host、ext4、串口/网络的 Windows 支持、共享上网脚本、诊断工具、菜单二级化)。
 细节与调试过程见 `NOTES.md`(§4–§7),使用说明见 `README.md`。
 
 ## 1. 新增功能一览
@@ -17,15 +17,25 @@
 | 未知文件系统诊断 | 无法识别时显示魔数并写 `/mnt/SDCARD/usbprobe.txt` |
 | 注意 | Type-C 口**不供 5V**,必须用自供电 USB Hub |
 
+### 1.3 菜单重构(二级菜单,已在设备屏幕上确认显示和操作正常)
+| 功能 | 说明 |
+|---|---|
+| 主菜单 7 项 | USB Storage、ADB、USB Serial、USB Network(A 进二级)、USB Host、Boot Defaults(A 进二级)、Return to MinUI;行数按屏幕高度自适应(1280x720@2x = 8 行),放不下时可滚动 |
+| USB Network 二级菜单 | Mode(OFF / +Internet / Local only)、Network Type(ECM/NCM/RNDIS)、How to connect(Windows/macOS/Linux 可滚动说明页:该选哪种类型、电脑 IP、脚本位置、运行命令、如何停止) |
+| Boot Defaults 二级菜单 | 勾选框:ADB、USB Storage(Off/RW/RO)、USB Serial、USB Network + Network Type;串口与网络互斥;改动即保存。取代了原来的 Boot Default / Boot USB Network 两行 |
+| 开机配置 3 行格式 | 行1 `adb_only|adb_ums_rw|adb_ums_ro|ums_rw|ums_ro|off`,行2 `net|-`,行3 `serial|-`;旧 1~2 行格式兼容;`tomato.m21` 已支持开机不启 ADB、开串口 |
+| 删除 On Exit to MinUI | 退出 USB Mode 一律自动关闭 USB Storage(避免设备与电脑同时写同一张 SD 卡) |
+| 脚本位置 | 共享网络/诊断脚本只放在 `Tools/m21/USB Mode.pak/host-tools/`,不再复制到 SD 根目录;说明页写明路径 |
+
 ### 1.2 USB 串口与 USB 网络(设备模式)——支持 Windows
 | 功能 | 说明 |
 |---|---|
 | USB Serial 改为标准 CDC-ACM | 新增 `f_acm_x.ko`;Windows 自带 `usbser`,Mac/Linux 免驱,设备端为 `ttyGS0`(原 `gser` 是厂商类,Windows 无驱动) |
-| Network Type 选择行 | 菜单新增 `Network Type: < ECM / NCM / RNDIS >`,保存在 `.userdata/m21/usb_nettype`,开机也生效 |
+| Network Type 选择 | 在 USB Network / Boot Defaults 二级菜单里选 `ECM / NCM / RNDIS`,保存在 `.userdata/m21/usb_nettype`,开机也生效 |
 | ECM / NCM / RNDIS 三种网络 | 新增 `f_ncm_x.ko`、`f_rndis_x.ko`(ECM 为原有);ECM=Mac/Linux,NCM=Mac/Linux/Win11,RNDIS=Windows 10/11 |
 | 串口与网络互斥 | UDC 只有 1 个中断端点,开其中一个会自动关另一个并提示;ADB + 存储 + 网络仍可共存 |
 | 设备类 EF/02/01 | 串口或网络开启时设置 IAD 复合设备类,Windows 才会按功能绑定内置驱动 |
-| 开机默认网络 | `usb_boot_mode.cfg` 第 2 行 `net` + `usb_nettype` |
+| 开机默认网络/串口 | `usb_boot_mode.cfg` 第 2 行 `net`、第 3 行 `serial` + `usb_nettype`(现由 Boot Defaults 二级菜单设置) |
 | RNDIS 的 Windows 兼容 | RNDIS 排在配置第一位 + MS OS 兼容 ID 描述符 + `bDataInterface` 修正(见 §2) |
 
 ### 1.3 共享上网(宿主 NAT)脚本——三个平台
@@ -68,22 +78,24 @@
 | USB 网络 ECM | ✅ | ❌ Windows 无内置 ECM 驱动(预期,未实测) | 仅 Mac/Linux |
 | USB 网络 NCM | ✅ DHCP+ping 大包 | ✅(Win11) | |
 | USB 网络 RNDIS | ❌(Mac 无驱动,只验证枚举/控制通路) | ✅(拿到 192.168.7.2) | 必须 RNDIS 排第一 |
-| USB 串口 CDC-ACM | ✅ 双向收发 | ❓ **未测** | |
+| USB 串口 CDC-ACM | ✅ 双向收发;用户后续实测串口功能正常(含开机勾选串口) | ❓ Windows COM 口 **未专门确认** | 开机 `adb_only`+`serial` 重启实测通过 |
 | 共享上网 | ✅(pf) | 🟡 8.8.8.8 通,域名解析卡住,待查 | |
-| 菜单界面(Network Type 行、互斥提示、运行时切换) | — | — | **屏幕操作未实测** |
+| 菜单界面(二级菜单、全屏、说明页、互斥提示) | — | — | ✅ 用户在设备屏幕确认显示和二级菜单正常;运行时切换/绑定失败回退分支未逐项测 |
 
 ## 4. 未解决 / 待办
 1. **Windows 共享后域名解析卡住**:先在 RNDIS/NCM + Windows 共享已 `on` 的状态下完整运行 `usb-diag-windows.bat`(不要 Ctrl+C,约 1 分钟)。
    **切换网络类型后 Windows 会出现新网卡,ICS 绑定的是旧网卡**,必须重新运行 `share-internet-windows.bat on`。
 2. Mac 路径下 `ping -s 1400 8.8.8.8` 100% 丢包(小包正常),`ECM` 模式下观察到;可能是 Mac 侧 NAT/MTU,也可能是大帧问题回归,待确认。
-3. 串口(CDC-ACM)在 Windows 上是否出现 COM 口:未测。
-4. 菜单界面的 Network Type / 串口-网络互斥 / 运行时切换:需要在设备屏幕上实测。
+3. 串口(CDC-ACM)在 Windows 上是否出现 COM 口:未专门确认(串口本身已实测正常)。
+4. 菜单:显示和二级菜单已确认;仍未逐项测的是"开机关闭 ADB"组合、开机模式 `off`、绑定失败自动回退分支。
 5. Windows ICS 回退路径、`New-NetNat` 路径:脚本未经完整真机验证(ICS 路径已能让 8.8.8.8 通)。
 6. 58.5GB 三分区 U 盘的传输错误(可能需要按 VID:PID 加 quirks,未尝试)。
 7. `uh_tune_disk` 把 `max_sectors_kb` 限成 4 对该 U 盘无效且更慢,可以去掉。
-8. 设备当前测试遗留:`usb_boot_mode.cfg`=`adb_only`+`net`、`usb_nettype`=`ncm`。SD 根目录的调试文件和 share/diag 脚本副本已清理(脚本只保留在 pak 的 host-tools 里)。
+8. 设备当前状态:`usb_boot_mode.cfg`=`adb_only`+`net`、`usb_nettype`=`ncm`。SD 根目录的调试文件和 share/diag 脚本副本已清理(脚本只保留在 pak 的 host-tools 里)。
+9. USB Host 带供电 hub + U 盘:用户已实机试过,但设备在 Host 模式下 adb 断开,`/tmp/usbhost.log` 在重启/切回后未取到有效内容,**结果未分析**;需要重测并在切回设备模式后(不重启)读 `/tmp/usbhost.log`、`/tmp/usbhost.state`。
 
 ## 5. 相关提交(`fork/main`)
 - USB Host:`4f39fb3` 持久化 · `f8d379e` A 键菜单 · `519994a` 非破坏性弹出 · `74ef8f7` 设备详情 · `33573a8` ext2/3/4 · `3f31bb9` 未知文件系统诊断 · `791087a` 读取参数
 - Windows 支持:`a7d9a65` ACM/NCM/RNDIS + net_device 填充 + 设备类 · `123fcb9` RNDIS 排第一 + MS OS + 描述符修复
-- 共享与诊断:`d2ed7ce` Windows 共享脚本 · `00da38b` ICS 回退 · `b470884` 诊断脚本
+- 共享与诊断:`d2ed7ce` Windows 共享脚本 · `00da38b` ICS 回退 · `b470884` 诊断脚本 · `9e753c6` 本文档
+- 菜单重构:`48ff1b8` 二级菜单/说明页/开机 3 行配置 · `4dfe4c8` 行数随屏幕高度 · `3faa59d` 删除 On Exit · `12bf099` 脚本只放 pak 的 host-tools

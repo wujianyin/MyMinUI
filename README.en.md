@@ -19,9 +19,9 @@ a hackable device (USB networking/storage/debug), documented low-level internals
 | Feature | Status |
 |---|---|
 | Storage / ADB / Serial / OTG role | tested |
-| USB Network (ECM) | tested on macOS (boot + switching flow); menu UI not yet verified on the device screen |
-| Internet via the host | device side done and checked (default route 192.168.7.2 + DNS set automatically); host NAT scripts in `host-tools/` only syntax/dry-run checked, not yet verified against a real connection |
-| Boot defaults | `adb_only`, `adb_ums_ro`, and network combinations tested after reboot; `adb_ums_rw` and `off` not individually tested |
+| USB Network (ECM / NCM / RNDIS, sub menu with per-OS help) | tested on macOS (ECM, NCM) and Windows (NCM, RNDIS); menu layout and sub menus verified on the device screen |
+| Internet via the host | device side done and checked (default route 192.168.7.2 + DNS set automatically); host NAT scripts in the pak's `host-tools/`: macOS verified end to end; Windows (WinNAT, ICS fallback) reaches 8.8.8.8 but DNS name resolution hangs (open); Linux script not verified on hardware |
+| Boot Defaults (sub menu with checkboxes: ADB / Storage / Serial / Network) | `adb_only`, `adb_ums_ro`, `adb_ums_rw`, `adb_only`+`net`, `adb_only`+`serial` tested after reboot; `off` and "ADB disabled at boot" not tested |
 
 The vendor kernel has no ECM/NCM/RNDIS, so out-of-tree modules (`u_ether_x.ko`, `f_ecm_x.ko`) are built against a mainline 5.4.61 tree patched
 with struct padding that matches the vendor layouts. The boot hook `tomato` was also fixed (unbind UDC before linking functions, bind-mount the
@@ -31,7 +31,7 @@ FunctionFS mount into the chroot, ECM fallback). Full work log, pitfalls and rem
 - Menu items not yet exercised on the device; `adb_ums_rw` / `off` boot modes untested.
 - Only macOS verified. Windows (RNDIS/NCM) modules compile but are untested and not shipped.
 - Few USB endpoints: ADB + storage + network use all of them; adding USB serial will probably not fit.
-- The device has no WiFi hardware/driver; Internet access needs the host to share its connection (`host-tools/share-internet-*.sh`; on Windows `share-internet-windows.bat`, WinNAT-based, not the built-in ICS). The stock `curl` was built with no protocols (`Protocols:` is empty), so test with `ping` or `chroot /overlay /bin/busybox wget` (stock `nc` does not send data). Large-frame (>512 B) corruption over ECM is fixed (4-byte DMA alignment in `u_ether`, see NOTES.md §6.2).
+- The device has no WiFi hardware/driver; Internet access needs the host to share its connection (`host-tools/share-internet-*.sh`; on Windows `share-internet-windows.bat`, WinNAT first with an ICS fallback). The stock `curl` was built with no protocols (`Protocols:` is empty), so test with `ping` or `chroot /overlay /bin/busybox wget` (stock `nc` does not send data). Large-frame (>512 B) corruption over ECM is fixed (4-byte DMA alignment in `u_ether`, see NOTES.md §6.2).
 - `dhcpd_mini` hands out a single lease (192.168.7.2) without gateway/DNS options; the device sets its own default route/DNS.
 - The real source of `tomato` was not found in the repo (`build/FULL/m21/tomato` is git-ignored); `tomato.m21` is a copy of the on-device file.
 - The pak is not wired into the workspace makefile; prebuilt `.elf`/`.ko` are committed (build steps are in NOTES.md).

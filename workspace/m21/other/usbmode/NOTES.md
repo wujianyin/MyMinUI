@@ -17,11 +17,10 @@ MyMinUI(`m21` 平台)跑在 32GB FAT SD 卡上的 `chroot /overlay`(glibc 2.26 �
 | USB Storage (SD Card) | OFF / RW / RO | 已测(早期会话) |
 | ADB Debugging | ON / OFF | 已测 |
 | USB Serial (ttyGS0) | ON / OFF | 已测(早期会话) |
-| **USB Network (192.168.7.x)** | OFF / ECM | 本次新增;功能经 shell 流程在设备上实测,**菜单 UI 本身未在设备屏幕上点过** |
+| **USB Network(二级菜单)** | Mode OFF/+Internet/Local;Type ECM/NCM/RNDIS;How to connect(Win/macOS/Linux) | 屏幕显示和二级菜单用户已确认;Mac 上 ECM/NCM、Windows 上 NCM/RNDIS 实测 |
 | USB Port Role | Device / OTG Host | 已测(早期会话) |
-| On Exit to MinUI | Keep / Auto eject | 已有 |
 | Boot Defaults(二级菜单) | 勾选框:ADB / Storage(Off,RW,RO) / Serial / Network + Network Type;串口与网络互斥 | 配置文件 3 行:`模式\nnet|-\nserial|-`;tomato 开机实测 serial、net 两种组合通过 |
-| USB Network(二级菜单) | Mode(OFF/+Internet/Local)、Network Type、How to connect(Windows/macOS/Linux 说明页,可滚动) | 脚本在 `Tools/m21/USB Mode.pak/host-tools/`(说明页里写明了路径) |
+| USB Network(二级菜单) | Mode(OFF/+Internet/Local)、Network Type、How to connect(Windows/macOS/Linux 说明页,可滚动) | 脚本只在 `Tools/m21/USB Mode.pak/host-tools/`(不再复制到 SD 根目录),说明页写明路径 |
 | Return to MinUI | | |
 
 开机实测通过的组合(重启后检查):
@@ -54,9 +53,11 @@ Windows 主机(RNDIS/NCM);Linux 主机(理论可行,没试)。
 - `/mnt/SDCARD/tomato`(开机钩子,已更新;旧版备份:Desktop 的 `USB Mode.pak/tomato.before_net`)
 - `/mnt/SDCARD/Tools/m21/USB Mode.pak/*`(同仓库 skeleton 内容)
 - `/mnt/SDCARD/.userdata/m21/usb_boot_mode.cfg`
-  - 第 1 行:`adb_only | adb_ums_rw | adb_ums_ro | off`
-  - 可选第 2 行:`net`(开机启用 USB 网络)
-- `/mnt/SDCARD/usb_adb_debug.log`(开机 USB 初始化日志,排查首选)
+  - 第 1 行:`adb_only | adb_ums_rw | adb_ums_ro | ums_rw | ums_ro | off`(`ums_*` = 开机不启 ADB)
+  - 第 2 行:`net` 或 `-`(开机启用 USB 网络,类型见 `usb_nettype`)
+  - 第 3 行:`serial` 或 `-`(开机启用 CDC-ACM 串口,与 net 互斥)
+  - 旧的 1~2 行格式兼容;由 USB Mode → Boot Defaults 二级菜单写入
+- `/mnt/SDCARD/usb_adb_debug.log`(开机 USB 初始化日志,排查首选;每次开机重写,不要提交/不必清理)
 
 ### 备份(Desktop,/tmp 会被清空!)
 `/Users/wujianyin/Desktop/mtd_dump/USB Mode.pak/`
@@ -204,6 +205,12 @@ arm-linux-gnueabihf-strip usbmode.elf'
 ---------------------------------------------------------------------
 
 ## 6. 遗留问题 / 下一步(按优先级)
+
+> **状态更新(2026-10-20 晚)**:下面 1–10 是早期清单,部分已完成:
+> 1 已提交(`fork/main`);2 菜单显示/二级菜单已在屏幕确认;4 串口-网络互斥已实现;5 Windows(NCM/RNDIS)已完成并实测(§7);
+> 6 共享上网已完成(Mac/Linux/Windows 脚本,见 §7.2);8 SD 根目录调试文件和脚本副本已清理。
+> 仍待办:Windows 共享后域名解析卡住、Mac ECM 大包丢包、Windows COM 口确认、开机 `off` / 开机关 ADB 组合、USB Host 带供电 hub 重测。
+> 完整清单见 `FEATURES_AND_ISSUES.md` §4。
 
 1. **提交到仓库**:`skeleton/.../USB Mode.pak/` 和 `workspace/m21/other/usbmode/` 目前是 untracked。
    并且把 `tomato.m21` 里的 USB 改动合并到 tomato 的真实源文件(仓库内只找到被忽略的 `build/FULL/m21/tomato`,

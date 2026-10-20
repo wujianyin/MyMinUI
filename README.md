@@ -30,12 +30,12 @@
 |---|---|---|
 | USB Storage | 把 SD 卡作为 U 盘暴露给电脑,可选读写 / 只读(用户态 FunctionFS 实现 `umsd`) | ✅ 已测 |
 | ADB | 开关 adb | ✅ 已测 |
-| USB Serial | `ttyGS0` 串口 + 登录 shell | ✅ 已测 |
-| **USB Network** | CDC-ECM 以太网,设备 `192.168.7.1`,电脑通过内置 DHCP 得到 `192.168.7.2` | ✅ macOS 上开机/切换流程实测通过;🟡 菜单界面本身还没有在设备屏幕上点按验证 |
-| **共享宿主机上网** | 设备端:USB 网络启动后自动加默认路由 `192.168.7.2` 和 DNS;宿主端用 `host-tools/share-internet-*.sh` 开 NAT | 🟡 设备端已实测(路由/DNS 正确);宿主端 NAT 脚本只做了语法和 dry-run 检查,待真机联网验证 |
+| USB Serial | CDC-ACM 串口(`ttyGS0` + 登录 shell),Windows/macOS/Linux 免驱 | ✅ 已测(含开机勾选串口);Windows COM 口未专门确认 |
+| **USB Network(二级菜单)** | ECM / NCM / RNDIS 以太网,设备 `192.168.7.1`,电脑通过内置 DHCP 得到 `192.168.7.2`;菜单里带 Windows/macOS/Linux 的“如何连接”说明页 | ✅ macOS(ECM/NCM)、Windows(NCM、RNDIS)实测;✅ 设备屏幕显示和二级菜单已确认 |
+| **共享宿主机上网** | 设备端:USB 网络启动后自动加默认路由 `192.168.7.2` 和 DNS;宿主端用 pak 里 `host-tools/` 的 `share-internet-macos.sh` / `share-internet-linux.sh` / `share-internet-windows.bat` 开 NAT | ✅ macOS 实测可上外网;🟡 Windows(`New-NetNat`,不可用时自动回退 ICS)8.8.8.8 通,域名解析卡住待查;Linux 脚本未真机验证 |
 | OTG 角色 | Device(连电脑)/ Host(接手柄、U 盘) | ✅ 已测 |
-| **USB Network 三态** | OFF / ON(设备经 PC 上外网) / ON(仅本地,不设默认路由/DNS) | ✅ 脚本逻辑已实测;🟡 屏幕菜单未实测 |
-| **Boot Defaults(二级菜单)** | 勾选开机默认开启的 USB 功能:ADB、存储(关/RW/RO)、串口、网络(及网络类型);串口与网络互斥 | ✅ `adb_only`、`adb_ums_ro`、网络组合已重启实测;✅ `adb_ums_rw` 已重启实测;🟡 `off` 未测(会关闭 USB,需拔 SD 卡恢复配置) |
+| **USB Network 三态** | OFF / ON(设备经 PC 上外网) / ON(仅本地,不设默认路由/DNS) | ✅ 脚本逻辑已实测;✅ 屏幕菜单显示已确认 |
+| **Boot Defaults(二级菜单)** | 勾选开机默认开启的 USB 功能:ADB、存储(关/RW/RO)、串口、网络(及网络类型);串口与网络互斥 | ✅ `adb_only`、`adb_ums_ro`、`adb_ums_rw`、`adb_only`+`net`、`adb_only`+`serial` 已重启实测;🟡 `off` 和“开机关闭 ADB”未测(会关闭 USB,需拔 SD 卡恢复配置) |
 
 实现位置:
 - pak 与二进制:`skeleton/EXTRAS/Tools/m21/USB Mode.pak/`
@@ -57,15 +57,15 @@
 3. 如需"开机默认 USB 模式",用 `workspace/m21/other/usbmode/tomato.m21` 里的 USB 部分更新 SD 卡根目录的 `tomato`
    (先对照你现有的 `tomato`,**不要直接覆盖**,并用 `sh -n tomato` 检查语法)。
 4. 在 MinUI 的 Tools 里打开 *USB Mode*。USB 网络:电脑端出现一块 "Tina ADB" 以太网卡,自动获得 `192.168.7.2`,`ping 192.168.7.1`。
-5. 想让设备上外网:在电脑上运行 `host-tools/share-internet-macos.sh on`(macOS,需要 sudo)或 `share-internet-linux.sh on`(Linux),或在 Windows 上双击 `share-internet-windows.bat`(管理员,用 `New-NetNat` 做 NAT,**不要用系统自带的“Internet 连接共享”**——它会把网卡改成 192.168.137.1 与设备的 192.168.7.x 冲突;Windows 脚本尚未在真机验证),
-   然后在设备 `adb shell` 里 `ping -c3 8.8.8.8`、`ping -c3 www.baidu.com`。用完 `... off` 关闭。Windows 请用系统自带的"Internet 连接共享"。
+5. 想让设备上外网:先把 pak 里的 `host-tools/` 脚本拷到电脑(打开 USB Storage 后在 SD 卡 `Tools/m21/USB Mode.pak/host-tools/` 里复制,或 `adb pull`),再运行:macOS `sudo sh share-internet-macos.sh on`,Linux `sudo sh share-internet-linux.sh on`,Windows 双击 `share-internet-windows.bat`(管理员;优先 `New-NetNat`,系统不支持时自动回退到 ICS 并把内网地址改成 192.168.7.2)。
+   然后在设备 `adb shell` 里 `ping -c3 8.8.8.8`、`ping -c3 www.baidu.com`。用完把 `on` 换成 `off` 关闭。切换 Network Type 后 Windows 会出现新网卡,需要重新运行 `on`。USB Mode → USB Network → How to connect 里有三个系统的逐步说明。
 
 ## 已知问题 / 待办
 
-- ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里新增 *USB Host (OTG)* 二级页:开关 Host、列出所有 USB 设备、存储设备自动挂载到 `/mnt/SDCARD/USB/<sdXn>` 并可安全弹出(带 hub 的挂载和屏幕页面尚未实测)。详见 NOTES.md §6.3。
-- 🟡 USB Mode 菜单(新增的两项)还没有在设备屏幕上实际操作验证;`off` 开机模式未测(`adb_ums_rw` 已测通过)。
-- 🟡 仅在 macOS 上验证了 USB 网络。**Windows(RNDIS/NCM)** 模块已能编译,但未上机测试,也没放进 pak。
-- 🟡 USB 端点有限(3 对 bulk + 1 个 interrupt):ADB + 存储 + 网络刚好用满,再叠加 USB Serial 大概率放不下,尚未做互斥/提示。
+- ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里新增 *USB Host (OTG)* 二级页:开关 Host、列出所有 USB 设备、存储设备自动挂载到 `/mnt/SDCARD/USB/<sdXn>` 并可安全弹出(带供电 hub 的挂载:用户实机试过但结果未取到/未分析,待重测)。详见 NOTES.md §6.3。
+- 🟡 菜单显示和二级菜单已在设备屏幕确认;`off` 开机模式和“开机关闭 ADB”组合未测。
+- 🟡 USB 网络:macOS(ECM/NCM)和 Windows(NCM、RNDIS)已实测;Windows 共享上网后域名解析卡住、Mac ECM 大包丢包待查,详见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md`。
+- ℹ️ USB 端点有限(3 对 bulk + 1 个 interrupt):串口与网络互斥,菜单(主菜单和 Boot Defaults)会自动关掉另一个并提示;ADB + 存储 + 网络可共存。
 - 🟡 设备本身**没有 WiFi 硬件/驱动**,上外网只能靠宿主机共享(Mac 上已实测可上外网);设备端自带的 `curl` 编译时没有任何协议(`Protocols:` 为空),
   `https`/`http` 都会报 `Protocol not supported`,自带 `nc` 也不发数据;测试请用 `ping` 或 `chroot /overlay /bin/busybox wget`(见 NOTES.md)。
 - ✅ 已修复:USB 网络大帧(>512 字节)收发损坏——原因是 sunxi UDC 的 DMA 要求 4 字节对齐,`u_ether` 的 `NET_IP_ALIGN` 让数据偏移了 2 字节(NOTES.md §6.2)。
