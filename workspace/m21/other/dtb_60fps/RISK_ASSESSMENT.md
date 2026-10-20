@@ -137,3 +137,26 @@ M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`
 - `/sys/class/disp/disp/attr/sys` 里不再有 `fps:38`,`launch.sh` 下次启动会设 `NEWDTB=1`,`platform.c` 随之对内屏启用 vsync。
 - 恢复方法(如需回退):`reboot efex` 进 FEL,`sunxi-fel spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin`(整片),或只写 `0xde000`/`0xe4000` 两个扇区的原始内容;万一连 FEL 都进不去,用 CH341 编程器写入同一份备份。
 - 待观察:长时间运行的发热、耗电、有无闪屏;游戏内 vsync 的实际效果(撕裂是否消失、`minarch_prevent_tearing` 等选项是否需要调整)。
+
+
+## 补充 7:60Hz 后的帧提交节奏实测(2026-10-20)
+
+工具:[pantrace](pantrace/README.md)(被动记录 `minarch.elf` 的显示 ioctl 时间)。游戏:GBA《龙珠大冒险》,连续滚动,约 100~120 秒/次,**每组只测了一次**。原始输出见 [measurements/](measurements/)。
+
+| | A:Prevent Tearing=Off,Core Sync=Core | B:Prevent Tearing=Lenient,Core Sync=Auto |
+|---|---|---|
+| 提交间隔 p50 | **16.80 ms**(59.5 Hz) | **16.80 ms**(59.5 Hz) |
+| p95 | 17.22 ms | 17.22 ms |
+| p99 | 22.4 ms | **18.3 ms** |
+| 间隔 >20 ms 的次数 | 76(1.3%) | **48(0.7%)** |
+| 间隔 <12 ms(追赶式连发)的次数 | 12 | **4** |
+| `FBIOPAN_DISPLAY` 平均耗时 | 6.06 ms | 6.05 ms |
+| `>30 ms` 次数(菜单/暂停造成) | 7 | 7 |
+
+结论(只写数据能支撑的部分):
+
+1. **两种配置下提交节奏都锁在 16.80 ms(59.5 Hz),即屏幕的新刷新率**,与我们算出的 59.52 Hz 吻合。`FBIOPAN_DISPLAY` 每帧阻塞约 6 ms 等 vblank。
+2. **M22Pro 竖屏走旋转分支,`PLAT_flip` 在该分支里无条件调用 `pan_display`**(`sync && isnewdtb` 只用于不旋转的分支),所以 vsync 等待并不依赖 Prevent Tearing,也不依赖 `NEWDTB`。这解释了为什么只改这个开关感觉不出大差别。
+3. 之前 38 Hz 的屏幕上,因为每帧都要等 vblank,**最多只能每秒提交 38 帧**,而 GBA 核心每秒产出约 59.7 帧,必然丢帧。现在每秒能提交约 59.5 帧。这条是机制推导,**没有 38 Hz 时代的 pantrace 数据做对比**(工具当时还没有)。
+4. 在 60Hz 下,B(Lenient+Auto)比 A 略好:>20 ms 的次数 1.3%→0.7%,连发次数 12→4。差异方向一致,但**每组只有一次、约 100 秒、含菜单暂停,不能当作统计显著**。
+5. **撕裂本身没有测到**,这套工具只能反映提交节奏。要看撕裂需要高速摄像(如手机 240 fps 慢动作拍 `0testtearing.p8`)。

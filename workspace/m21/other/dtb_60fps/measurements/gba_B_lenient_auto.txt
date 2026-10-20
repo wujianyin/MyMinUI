@@ -1,0 +1,3 @@
+# pantrace minarch.elf records=13978 span=121.2s (first 3s ignored)
+req=0x47 calls=6867 rate=58.09/s | interval ms: mean=17.22 sd=17.91 p50=16.80 p95=17.22 p99=18.32 max=1264.19 | >20ms=48(0.7%) >30ms=7 <12ms=4 | duration ms: mean=0.085 p99=0.141 max=0.810
+req=0x4606 calls=6865 rate=58.07/s | interval ms: mean=17.15 sd=17.16 p50=16.80 p95=17.22 p99=18.28 max=1264.19 | >20ms=46(0.7%) >30ms=6 <12ms=4 | duration ms: mean=6.045 p99=6.334 max=16.874
