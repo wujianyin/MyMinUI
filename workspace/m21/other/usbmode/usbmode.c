@@ -731,13 +731,13 @@ static const char *help_text(int os) {
         "\n"
         "Share the PC's Internet with the device:\n"
         " 1. Plug in USB, set USB Network to ON (+Internet).\n"
-        " 2. Copy share-internet-windows.bat and share-internet-windows.ps1 from the SD card root to the PC (turn on USB Storage, or read the card directly).\n"
+        " 2. Copy share-internet-windows.bat and share-internet-windows.ps1 from the SD card folder Tools/m21/USB Mode.pak/host-tools to the PC (turn on USB Storage, or use a card reader).\n"
         " 3. Double-click share-internet-windows.bat and allow the administrator prompt. The script finds the USB adapter and shares your Wi-Fi/Ethernet with it.\n"
         " 4. On the device: adb shell, then ping 8.8.8.8 and ping www.baidu.com.\n"
         "\n"
         "Run the .bat again after changing Network Type or re-plugging the cable (Windows creates a new adapter). To stop: share-internet-windows.bat off\n"
         "\n"
-        "If it does not work, run usb-diag-windows.bat (SD card root) and look at usb-diag.txt.\n"
+        "If it does not work, run usb-diag-windows.bat (same folder) and look at usb-diag.txt.\n"
         "\n"
         "USB Serial (ACM) appears as a COM port in Device Manager (Ports).";
     if (os == OS_MACOS)
@@ -747,7 +747,7 @@ static const char *help_text(int os) {
         "\n"
         "Share the Mac's Internet with the device:\n"
         " 1. Plug in USB, set USB Network to ON (+Internet).\n"
-        " 2. Copy share-internet-macos.sh from the SD card root to the Mac.\n"
+        " 2. Copy share-internet-macos.sh from the SD card folder Tools/m21/USB Mode.pak/host-tools to the Mac.\n"
         " 3. In Terminal run:\n"
         "      sudo sh share-internet-macos.sh on\n"
         "    (when the uplink is not auto-detected, e.g. with a VPN: sudo sh share-internet-macos.sh on en0)\n"
@@ -762,7 +762,7 @@ static const char *help_text(int os) {
         "\n"
         "Share the PC's Internet with the device:\n"
         " 1. Plug in USB, set USB Network to ON (+Internet).\n"
-        " 2. Copy share-internet-linux.sh from the SD card root to the PC.\n"
+        " 2. Copy share-internet-linux.sh from the SD card folder Tools/m21/USB Mode.pak/host-tools to the PC.\n"
         " 3. In a terminal run:\n"
         "      sudo sh share-internet-linux.sh on\n"
         "    (or name the uplink interface: sudo sh share-internet-linux.sh on wlan0)\n"
@@ -772,19 +772,6 @@ static const char *help_text(int os) {
         "      sudo sh share-internet-linux.sh off\n"
         "\n"
         "USB Serial (ACM) appears as /dev/ttyACM0; use: screen /dev/ttyACM0 115200";
-}
-
-/* make sure all host scripts are on the SD card root (copy from the pak when missing / outdated) */
-static void ensure_host_tools(void) {
-    const char *dir = getenv("USBMODE_PAK_DIR");
-    char cmd[768];
-    if (!dir || !*dir) dir = "/mnt/SDCARD/Tools/m21/USB Mode.pak";
-    snprintf(cmd, sizeof(cmd),
-             "for f in share-internet-macos.sh share-internet-linux.sh share-internet-windows.bat "
-             "share-internet-windows.ps1 usb-diag.sh usb-diag-windows.bat; do "
-             "s='%s/host-tools/'$f; d=/mnt/SDCARD/$f; [ -f \"$s\" ] || continue; "
-             "cmp -s \"$s\" \"$d\" 2>/dev/null || cp \"$s\" \"$d\"; done 2>/dev/null", dir);
-    system(cmd);
 }
 
 static void run_help_page(SDL_Surface *screen, int os) {
@@ -865,7 +852,6 @@ static void run_net_page(SDL_Surface *screen) {
     enum { R_MODE = 0, R_TYPE, R_HELP, R_BACK, R_COUNT };
     int sel = 0, top = 0, os = OS_WINDOWS, dirty = 1, show_setting = 0, quit = 0;
     char foot[200] = "Mode: ON(+Internet) = route via PC. ON(Local only) = no gateway.";
-    ensure_host_tools();
 
     while (!quit) {
         GFX_startFrame();
@@ -907,7 +893,7 @@ static void run_net_page(SDL_Surface *screen) {
             snprintf(rows[R_BACK], UI_ROW_LEN, "[ Back ]");
             const char *f = foot;
             if (sel == R_TYPE) f = "ECM: Mac/Linux  NCM: Mac/Linux/Win11  RNDIS: Windows (Mac: no)";
-            else if (sel == R_HELP) f = "Scripts to share the PC's Internet are in the SD card root";
+            else if (sel == R_HELP) f = "Share scripts: SD card Tools/m21/USB Mode.pak/host-tools";
             ui_draw_list(screen, show_setting, "USB Network", rows, R_COUNT, sel, &top, f, "CHANGE");
             dirty = 0;
         } else GFX_sync();

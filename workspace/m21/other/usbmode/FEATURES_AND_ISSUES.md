@@ -39,7 +39,7 @@
 四个脚本在 pak 的 `host-tools/`,同时放了一份在 **SD 卡根目录**(方便在电脑上直接复制)。
 
 ### 1.4 诊断工具
-- `host-tools/usb-diag.sh`(设备端)+ `usb-diag-windows.bat`:依次测网关、各 DNS 的 ping、`nslookup`、大包、系统解析器,结果保存为 `usb-diag.txt` 并复制到剪贴板(SD 根目录也有一份)。
+- `host-tools/usb-diag.sh`(设备端)+ `usb-diag-windows.bat`:依次测网关、各 DNS 的 ping、`nslookup`、大包、系统解析器,结果保存为 `usb-diag.txt` 并复制到剪贴板(设备上位于 `Tools/m21/USB Mode.pak/host-tools/`)。
 - `dhcpd_mini` 现在把收发的 DHCP 报文写到 `/tmp/dhcpd.log`。
 - 设备 UDC 调试开关:`/sys/devices/platform/soc@3000000/4100000.udc-controller/{queue_debug,irq_debug}` 写 1。
 
@@ -81,7 +81,7 @@
 5. Windows ICS 回退路径、`New-NetNat` 路径:脚本未经完整真机验证(ICS 路径已能让 8.8.8.8 通)。
 6. 58.5GB 三分区 U 盘的传输错误(可能需要按 VID:PID 加 quirks,未尝试)。
 7. `uh_tune_disk` 把 `max_sectors_kb` 限成 4 对该 U 盘无效且更慢,可以去掉。
-8. 设备当前测试遗留:`usb_boot_mode.cfg`=`adb_only`+`net`、`usb_nettype`=`ncm`;SD 根目录有 `ecmtest.log`、`usbprobe.txt`、`usbhost.log.run*`、`usbhost_test.sh` 等调试文件,可清理。
+8. 设备当前测试遗留:`usb_boot_mode.cfg`=`adb_only`+`net`、`usb_nettype`=`ncm`。SD 根目录的调试文件和 share/diag 脚本副本已清理(脚本只保留在 pak 的 host-tools 里)。
 
 ## 5. 相关提交(`fork/main`)
 - USB Host:`4f39fb3` 持久化 · `f8d379e` A 键菜单 · `519994a` 非破坏性弹出 · `74ef8f7` 设备详情 · `33573a8` ext2/3/4 · `3f31bb9` 未知文件系统诊断 · `791087a` 读取参数

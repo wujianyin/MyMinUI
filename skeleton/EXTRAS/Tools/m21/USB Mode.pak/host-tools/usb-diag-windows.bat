@@ -10,7 +10,7 @@ echo Running the checks on the device, this takes up to about 1 minute. Please d
 echo ===== Windows ===== > "%OUT%"
 ipconfig | findstr /i "adapter IPv4 Gateway" >> "%OUT%"
 echo ===== device ===== >> "%OUT%"
-adb shell "[ -f /mnt/SDCARD/usb-diag.sh ] && sh /mnt/SDCARD/usb-diag.sh || echo /mnt/SDCARD/usb-diag.sh missing" >> "%OUT%" 2>&1
+adb shell "sh /mnt/SDCARD/Tools/m21/USB*Mode.pak/host-tools/usb-diag.sh" >> "%OUT%" 2>&1
 type "%OUT%"
 type "%OUT%" | clip
 echo.
