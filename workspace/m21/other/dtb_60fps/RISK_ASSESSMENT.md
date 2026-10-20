@@ -160,3 +160,11 @@ M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`
 3. 之前 38 Hz 的屏幕上,因为每帧都要等 vblank,**最多只能每秒提交 38 帧**,而 GBA 核心每秒产出约 59.7 帧,必然丢帧。现在每秒能提交约 59.5 帧。这条是机制推导,**没有 38 Hz 时代的 pantrace 数据做对比**(工具当时还没有)。
 4. 在 60Hz 下,B(Lenient+Auto)比 A 略好:>20 ms 的次数 1.3%→0.7%,连发次数 12→4。差异方向一致,但**每组只有一次、约 100 秒、含菜单暂停,不能当作统计显著**。
 5. **撕裂本身没有测到**,这套工具只能反映提交节奏。要看撕裂需要高速摄像(如手机 240 fps 慢动作拍 `0testtearing.p8`)。
+
+
+## 补充 8:发现并修复 system.cfg 默认值写错(2026-10-20)
+
+- `minarch` 的选项值按 `strcmp` **区分大小写**匹配,匹配不上就回落到第 0 项。`skeleton/SYSTEM/m21/system.cfg` 里原来写的是 `minarch_prevent_tearing = lenient`(小写),而合法值是 `Off/Lenient/Strict`,所以出厂默认**实际是 `Off`**(日志里也能看到 `SET Prevent Tearing TO Off`)。
+- 已改成 `Lenient`(仓库 `skeleton/SYSTEM/m21/system.cfg`,设备上的 `/mnt/SDCARD/.system/m21/system.cfg` 也已同步,原文件备份在 `~/Desktop/mtd_dump/system.cfg.orig`)。
+- 设备上 `GBA-gpsp`、`FC-fceumm`、`P8-fake08` 已保存的 `minarch.cfg` 会覆盖系统默认,已全部改为 `Prevent Tearing=Lenient`、`Core Sync=Auto`(原文件备份在 `~/Desktop/mtd_dump/*_minarch.cfg.orig`)。以后新玩的核心会直接用新默认值。
+- 跟踪工具 `pantrace` 已从设备卸载(`/overlay/etc/ld.so.preload` 和 `/overlay/lib/pantrace.so` 已删除)。
