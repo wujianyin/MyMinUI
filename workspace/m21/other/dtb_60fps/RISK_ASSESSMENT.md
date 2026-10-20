@@ -118,3 +118,12 @@ M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`
 - 实测 `sunxi-fel spiflash-info`:Manufacturer `85h`(Puya),model `20h`,**容量 16 MiB**。`mtd0` 的 1 MiB 只是整颗 SPI NOR 的第一个分区。
 - `sunxi-fel spiflash-read 0 0x1000000 <out>` 读出整颗 16 MiB,与仓库 `firmware/sjgam-m22pro/images/` 里 5 个分区镜像(uboot/env/boot/boot-resource/rootfs)**逐字节一致**,尾部全是 `0xff`。完整备份保存在 `~/Desktop/mtd_dump/spi_full_16M_fel.bin`,SHA256 `76aa79b7…ec42a`。
 - 所以:**设备在 Linux 起不来时,只要能进 FEL,就能把整颗 SPI NOR 读出/比对。写入路径(`spiflash-write`,擦除+页编程)尚未测试**,Puya 不在工具的已知芯片表里,会按默认的 4 KiB 擦除 `0x20` 和 256 字节页编程 `0x02` 处理,需要先在一个无关紧要的区域(如文件尾部 `0xff` 区)做写入/回读验证后才能信赖。
+
+
+## 补充 5:FEL 写入路径实测(2026-10-20)
+
+- 测试区域:SPI 偏移 `0xfb0000` 起,位于 rootfs 分区之后的空白尾部(文件系统在 `0xfa7800` 结束,之后全是 `0xff`),不影响任何系统内容。
+- `sunxi-fel spiflash-write 0xfb0000 <8 KiB 随机数据>` 后回读,**逐字节一致**:擦除(4 KiB,`0x20`)+页编程(256 B,`0x02`)在 Puya 芯片上可用,没有写保护。
+- 恢复过程中出过一次失误:用 `tr` 生成"全 0xff"文件时,因为终端区域设置得到了 UTF-8 的 `c3 bf` 序列,导致 `0xfb0000` 起 16 KiB 被写成了 `c3bf`。随后用 Python 生成真正的 16 KiB `0xff` 写回,再读出整颗 16 MiB,**与刷前的完整备份 SHA256 完全一致(`76aa79b7…ec42a`)**,即已原样恢复。教训:生成测试数据一律用 Python 或 `xxd`,并写后立刻整片回读比对。
+- 结论:**设备进 FEL 后,可以用 `sunxi-fel` 读出、写入、校验整颗 SPI NOR**。因此只要能进 FEL(目前只验证了 Linux 活着时 `reboot efex` 进入),刷坏的设备就有了可用的恢复手段:`spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin`。
+- 仍未验证:Flash 内容损坏、Linux 起不来时,设备能否自动/手动进入 FEL。这是现在唯一剩下的缺口。
