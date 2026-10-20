@@ -100,3 +100,13 @@ M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`
 | 运行时调时序接口 | `/sys/class/disp/disp/attr/` 只有 `sys xres yres colorbar enhance_* runtime_enable ...`,**没有改 LCD 时序的接口**,`runtime_enable=0`。只能改 flash 里的 DTB,无法先在运行时试验 |
 
 结论:补丁脚本的前提(型号、原始数据、时序)已在真机上全部核实。**唯一没核实的是 FEL 救砖能否进入**,以及 hx8399 能否承受 972 Mbit/s 的 lane 速率;这两项只有刷了才知道,所以仍不建议在没有 FEL 手段前写入。
+
+
+## 补充 3:FEL 实测(2026-10-20,未写 Flash)
+
+- 设备的 `/sbin/reboot` 支持 `efex`:`adb shell reboot efex`(会提示 `can not access .../rtc/flag`,可忽略)后设备进入 FEL,Mac 上 `sunxi-fel version` 返回 `AWUSBFEX soc=00001859(R528)`。**设备能进 FEL,Mac 能通信。**
+- 设备电源是**拨动开关**(没有电源键):拨到关再拨到开即可冷启动并恢复,实测恢复正常(MyMinUI-20260208b-0,`ref_fps:38`,adb 正常)。
+- `sunxi-tools` 不在 brew 里,需自行编译:`brew install dtc pkgconf`,`git clone https://github.com/linux-sunxi/sunxi-tools`,`make sunxi-fel`。
+- 这个版本的 `sunxi-fel` **没有实现 R528 的 SPI 支持**(`spiflash-info`/`spiflash-read` 报 `SPI support not implemented yet for 1859 (R528)`),所以不能直接通过 FEL 读写 SPI NOR。真要救砖,需要先通过 FEL 上传自制的 SPI 读写小程序,**尚未实现、尚未验证**。
+- 仍未验证:Flash 内容损坏后,上电能否**自动**进入 FEL;没有电源键,无法"按键上电进 FEL",手动进入需要短接 SPI NOR 引脚或用 TF 卡启动,两者都未调查。
+- 结论:FEL 通道可用,但"刷坏了一定能救回来"这件事**仍没有保障**。不建议在做出可用的 FEL 救砖流程前写 Flash。
