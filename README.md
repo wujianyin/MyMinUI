@@ -18,6 +18,9 @@
 
 - 上游对 m21 平台的适配现状、时间线和已知问题总结:**[M21_STATUS.md](M21_STATUS.md)**(依据上游 README、Releases、提交、Issues/PR)。
 
+- TF 卡损坏后的恢复清单(哪些文件从仓库恢复、哪些恢复不了):**[SD_RESTORE.md](SD_RESTORE.md)**。
+- 内屏 60Hz 补丁(已在 M22Pro 上验证)和 FEL 救砖流程:**[workspace/m21/other/dtb_60fps/](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md)**。
+
 - 原厂固件镜像(SPI NOR 全部分区)和分析文档:**[firmware/sjgam-m22pro/](firmware/sjgam-m22pro/)**,
   分析见 [ANALYSIS.md](firmware/sjgam-m22pro/ANALYSIS.md)。
 - 要点:Linux 5.4.61 + musl 的 Tina Linux,16 MiB SPI NOR,系统只读且已满;MinUI 通过 `/usr/tomato` 钩子从 SD 卡启动,
