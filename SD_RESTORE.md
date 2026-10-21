@@ -17,6 +17,7 @@
 | 系统默认值(`minarch_prevent_tearing = Lenient`) | `skeleton/SYSTEM/m21/system.cfg` | `/.system/m21/system.cfg` |
 | USB 开机默认 | 见下 | `/.userdata/m21/usb_boot_mode.cfg`、`usb_nettype` |
 | 中文字体(覆盖同名文件) | `workspace/m21/other/cjkfont/BPreplayBold-unhinted.otf` | `/.system/res/BPreplayBold-unhinted.otf` |
+| Files.pak 中文字体(覆盖同名文件) | `workspace/m21/other/cjkfont/Files.pak/res/FreeSans.ttf` | `/Tools/m21/Files.pak/res/FreeSans.ttf` |
 | 测试 ROM(可选) | `skeleton/EXTRAS/Roms/Pico-8 (P8)/` | `/Roms/Pico-8 (P8)/` |
 
 ```sh

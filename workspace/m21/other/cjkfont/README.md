@@ -27,6 +27,18 @@ adb push BPreplayBold-unhinted.otf /mnt/SDCARD/.system/res/BPreplayBold-unhinted
 
 原字体与仓库 `skeleton/SYSTEM/res/BPreplayBold-unhinted.otf` 相同,拷回去覆盖即可。
 
+## Files.pak(文件管理器 MyCommander)
+
+`Files.pak` 用自己的字体 `Tools/m21/Files.pak/res/FreeSans.ttf`(1.5 MB,同样没有中文)。这里的替换件是 FreeSans(拉丁/希腊/西里尔不变)+ Noto Sans CJK SC **Regular**(汉字、假名、标点,和 FreeSans 的粗细一致),同样把垂直度量固定为原字体的值,大小 3.7 MB。MyCommander 用 `TTF_RenderUTF8`,所以中文文件名可以直接显示。
+
+![Files.pak preview](Files.pak/preview.png)
+
+```sh
+adb push Files.pak/res/FreeSans.ttf "/mnt/SDCARD/Tools/m21/Files.pak/res/FreeSans.ttf"
+```
+
+没有 adb 时直接复制到 TF 卡的 `Tools/m21/Files.pak/res/` 覆盖。原字体可从发布包 `Tools/m21/Files.pak/res/FreeSans.ttf` 取回。生成脚本:`1b_subset_noto_regular.py`(需要 `NotoSansCJKsc-Regular.otf`,下载地址同上,把 `Bold` 换成 `Regular`)和 `3_merge_freesans.py`(依赖 `2_merge.py` 里的 `to_ttf()` 函数)。
+
 ## 为什么没有改仓库里的 `skeleton/SYSTEM/res/`
 
 那个目录是**所有平台共用**的。2.2 MB 的字体会让内存小的平台(如 miyoomini)每个进程多占内存,而本 fork 没有测过。所以只作为 m21 的"替换件"放在这里,
