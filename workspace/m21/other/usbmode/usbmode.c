@@ -42,6 +42,16 @@ enum {
     ROLE_HOST   = 1,
 };
 
+/* cycle order OFF -> Read-Only -> Read-Write -> OFF: RW is never the first thing you land on
+ * (device and PC would both write the same FAT, which can corrupt the card) */
+static int storage_step(int cur, int dir) {
+    static const int order[3] = { STORAGE_OFF, STORAGE_RO, STORAGE_RW };
+    int pos = 0;
+    for (int i = 0; i < 3; i++) if (order[i] == cur) pos = i;
+    return order[(pos + dir + 3) % 3];
+}
+#define STORAGE_RW_WARN "RW: PC and device both write the SD card, can corrupt it. Prefer Read-Only; use a card reader to copy files."
+
 static int cur_storage = STORAGE_OFF;
 static int cur_adb     = 1;
 static int cur_serial  = 0;
@@ -921,9 +931,10 @@ static void run_boot_page(SDL_Surface *screen) {
                     snprintf(foot, sizeof(foot), boot_adb ? "ADB will start at boot" : "ADB will NOT start at boot (use with care)");
                     break;
                 case B_STORAGE:
-                    boot_storage = (boot_storage + dir + 3) % 3;
-                    snprintf(foot, sizeof(foot), "SD card shown to the PC at boot: %s",
-                             boot_storage == 1 ? "read-write" : (boot_storage == 2 ? "read-only" : "no"));
+                    boot_storage = storage_step(boot_storage, dir);
+                    if (boot_storage == STORAGE_RW) snprintf(foot, sizeof(foot), "%s", STORAGE_RW_WARN);
+                    else snprintf(foot, sizeof(foot), "SD card shown to the PC at boot: %s",
+                             boot_storage == STORAGE_RO ? "read-only" : "no");
                     break;
                 case B_SERIAL:
                     boot_serial = !boot_serial;
@@ -1011,13 +1022,14 @@ int main(int argc, char *argv[]) {
 
             switch (selected) {
                 case ITEM_STORAGE:
-                    cur_storage = (cur_storage + dir + 3) % 3;
+                    cur_storage = storage_step(cur_storage, dir);
                     cur_role = ROLE_DEVICE;
                     snprintf(status_msg, sizeof(status_msg), "Applying USB Storage Mode...");
                     GFX_clear(screen);
                     GFX_blitMessage(font.large, status_msg, screen, &(SDL_Rect){0, 0, screen->w, screen->h});
                     GFX_flip(screen);
                     apply_usb_config();
+                    if (cur_storage == STORAGE_RW) snprintf(status_msg, sizeof(status_msg), "%s", STORAGE_RW_WARN);
                     break;
                 case ITEM_ADB:
                     cur_adb = !cur_adb;
@@ -1054,7 +1066,7 @@ int main(int argc, char *argv[]) {
         if (dirty) {
             char rows[ITEM_COUNT][UI_ROW_LEN];
             snprintf(rows[ITEM_STORAGE], UI_ROW_LEN, "USB Storage (SD Card): %s",
-                     cur_storage == STORAGE_RW ? "< ON (Read-Write) >" :
+                     cur_storage == STORAGE_RW ? "< ON (Read-Write, risky) >" :
                      (cur_storage == STORAGE_RO ? "< ON (Read-Only) >" : "< OFF >"));
             snprintf(rows[ITEM_ADB], UI_ROW_LEN, "ADB Debugging: %s", cur_adb ? "< ON >" : "< OFF >");
             snprintf(rows[ITEM_SERIAL], UI_ROW_LEN, "USB Serial (CDC-ACM): %s", cur_serial ? "< ON >" : "< OFF >");

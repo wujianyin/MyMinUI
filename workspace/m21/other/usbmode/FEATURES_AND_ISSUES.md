@@ -55,6 +55,7 @@
 | USB Network 二级菜单 | Mode(OFF / +Internet / Local only)、Network Type(ECM/NCM/RNDIS)、How to connect(Windows/macOS/Linux 可滚动说明页:该选哪种类型、电脑 IP、脚本位置、运行命令、如何停止) |
 | Boot Defaults 二级菜单 | 勾选框:ADB、USB Storage(Off/RW/RO)、USB Serial、USB Network + Network Type;串口与网络互斥;改动即保存。取代了原来的 Boot Default / Boot USB Network 两行 |
 | 开机配置 3 行格式 | 行1 `adb_only|adb_ums_rw|adb_ums_ro|ums_rw|ums_ro|off`,行2 `net|-`,行3 `serial|-`;旧 1~2 行格式兼容;`tomato.m21` 已支持开机不启 ADB、开串口 |
+| USB Storage 默认只读 | 切换顺序改为 OFF → **只读(RO)** → 读写(RW) → OFF,按一次右键只会先到只读;读写显示为 `ON (Read-Write, risky)`,并在状态栏警告"电脑和设备同时写 SD 卡会损坏文件系统,请优先只读,用读卡器拷文件"。Boot Defaults 里的 USB Storage 同样 |
 | 删除 On Exit to MinUI | 退出 USB Mode 一律自动关闭 USB Storage(避免设备与电脑同时写同一张 SD 卡) |
 | 脚本位置 | 共享网络/诊断脚本只放在 `Tools/m21/USB Mode.pak/host-tools/`,不再复制到 SD 根目录;说明页写明路径 |
 
@@ -132,3 +133,10 @@
 - Windows 支持:`a7d9a65` ACM/NCM/RNDIS + net_device 填充 + 设备类 · `123fcb9` RNDIS 排第一 + MS OS + 描述符修复
 - 共享与诊断:`d2ed7ce` Windows 共享脚本 · `00da38b` ICS 回退 · `b470884` 诊断脚本 · `9e753c6` 本文档
 - 菜单重构:`48ff1b8` 二级菜单/说明页/开机 3 行配置 · `4dfe4c8` 行数随屏幕高度 · `3faa59d` 删除 On Exit · `12bf099` 脚本只放 pak 的 host-tools
+
+
+## 附:2026-10-21 TF 卡损坏的分析
+
+- 卡:Samsung(manfid `0x1b`)、型号 EB2MW、2017-06、29.8 GiB,容量与正品 32GB 吻合;本次开机内核日志无 MMC/I/O 错误,但有 `FAT-fs: Volume was not properly unmounted`。**没做全盘读写测试**。
+- 推断的原因(**未证实**):设备把 SD 以读写方式挂载着,USB Storage 又把同一块设备原样导出给电脑,两边都能写同一份 FAT,没有互斥;损坏前的卡上有 Windows/macOS 生成的 `.Spotlight-V100`、`.fseventsd`、`System Volume Information`,说明电脑在导出期间确实写过卡。此外电源是拨动开关,直接断电时卡仍处于读写挂载。
+- 对策:USB Storage 默认只读并对读写模式给警告(本次改动);平时用读卡器传文件;出现"未正常卸载"提示后在 Mac 上跑 `fsck_msdos`;定期备份存档/配置;这张卡已用约 9 年,建议备份后更换。

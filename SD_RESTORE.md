@@ -34,6 +34,10 @@ printf 'ncm\n'             > /.userdata/m21/usb_nettype
 
 存档(`Saves/`)、即时存档、最近游玩列表、亮度/音量/睡眠设置。建议定期把整张卡做成镜像备份(例如读卡器接入后 `sudo dd if=/dev/rdiskN of=tf.img bs=4m`,先用 `diskutil list` 确认 N)。
 
-## 5. 恢复后核对(adb)
+## 5. 为什么会损坏(推断)
+
+见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md` 末尾:设备读写挂载 SD 的同时,USB Storage 读写模式让电脑也能写同一份 FAT。USB Mode 现在默认只读;不要在读写模式下往卡里拷文件,用读卡器。
+
+## 6. 恢复后核对(adb)
 
 `ref_fps:60`、`/mnt/SDCARD/tomato` 为 11605 字节、`Tools/m21/USB Mode.pak` 存在、`usb_boot_mode.cfg` 为 `adb_only/net/-`、`system.cfg` 里是 `Lenient`、`/sys/kernel/config/usb_gadget/g1/functions` 有 `ffs.adb` 和 `ncm.usb0`、`usb0` 为 `192.168.7.1`。
