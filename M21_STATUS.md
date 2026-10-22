@@ -33,6 +33,20 @@
 - 时间/电源 [作者]:没有 RTC,关机时保存系统时间、开机恢复(用物理开关断电不会保存);睡眠 = 黑屏,Select 唤醒,2 分钟后自动"关机"(仍需手动拨开关);CPU 频率档位 480/720/912/1008/1104/1200MHz [代码]。
 - 安装 [代码]:`INSTALL.md` 的 SJGAM 一节——FAT32 SD 卡,把发布包里的 `m21/` 目录复制过去,`m21/emulationstation` 和 `m21/tomato` 再复制到根目录,整个 zip 保持压缩放在根目录;首次启动自动安装(需要创建 swap,**耐心等**)。
 
+### 1.1 硬件与显示链路(2026-10-22 adb 和固件设备树实测)
+
+| 项目 | 结果 | 证据 |
+|---|---|---|
+| SoC | 全志 H133(sun8iw20,与 R528/T113 同族) | `/proc/device-tree/model`=`sun8iw20`,compatible=`allwinner,h133`、`arm,sun8iw20p1` |
+| CPU | 双核 Cortex-A7,NEON、VFPv4;可用频率 480/720/912/1008/1104/1200 MHz | `/proc/cpuinfo`,`cpufreq/scaling_available_frequencies` |
+| 内存 | 约 234MB 可用(`MemTotal` 239908 kB) | `/proc/meminfo` |
+| GPU | **没有** | 固件 dts 和运行中的设备树里没有 gpu/mali/powervr/sgx 节点;`/dev` 下没有 dri/mali/pvr/kgsl;`/sys/class` 没有 drm 和 devfreq;dmesg 无 GPU 日志;overlay 里只有 libdrm,没有 Mali/EGL/GLES 库 |
+| 有的图形相关硬件 | G2D(`g2d@5410000`,`/dev/g2d`,2D 加速)、显示引擎 DE(`disp@5000000`,`/dev/disp`)、视频编解码 Cedar(`ve@1c0e000`,`/dev/cedar_dev`)、deinterlace、CE 加密、摄像头输入 vind | 设备树节点和 `/dev` |
+
+显示链路 [代码][推断]:核心或 MinUI 用 CPU(NEON)把一帧画进 ION 物理连续内存 → CPU 旋转 90° → 通过 `/dev/disp` 的 `pan_display` 让 DE 读取该图层 → DE 缩放到 1080x1920 并经 MIPI-DSI 送面板。DE 是固定功能的显示读取和合成单元,不是 GPU,画什么完全由 CPU 决定。`pan_display` 会阻塞约 6ms 等 vblank,所以 60Hz 补丁(改面板时序和 DSI 速率)和 Prevent Tearing 都作用在这一段。`colorbar` 属性是 DE 自带的测试图案,不经过 CPU。
+
+由此带来的限制:需要 3D 的核心(PSP、DC 等)跑不动;能做的加速只有 NEON,以及用 G2D 做旋转和缩放(尚未评估,见第 6 节)。
+
 ## 2. 适配时间线(m21 相关)
 
 | 日期 | 事件 |
