@@ -58,6 +58,6 @@ BASEZIP=/path/MyMinUI-20260208b-0-m21.zip sh workspace/m21/other/dockerbuild/pac
 ## 状态(2026-10-24)
 - 上游最新源码(`72ed4f3`)的 minui、minarch、keymon、clock、minput、clear_recent、convertboxart 全部**编译并链接通过**,
   依赖的 glibc 符号版本不高于 2.17。
-- **只验证了能编过,已在 SJGAM M22Pro 上实测 GBA(见上一节)。其它核心和 PICO-8 还没逐个回归,部署前先备份 `.system/m21`。
+- 已在 SJGAM M22Pro 上实测 GBA(见上一节)。其它核心和 PICO-8 还没逐个回归,部署前先备份 `.system/m21`。
 - 现在也覆盖了 `libmsettings`、`show`、`overclock`,并用上游相同的优化参数(minui `-Os -flto`,minarch `-O3 -flto=auto` 等)。
 - 还没覆盖:`Commander`(C++)、核心 `.so`、fuse 核心。
