@@ -36,6 +36,11 @@ rm -rf "$B"
 mkdir -p "$B/SYSTEM" "$B/EXTRAS/Emus" "$B/EXTRAS/Tools" "$B/PAYLOAD"
 cp -R skeleton/BASE "$B/BASE"
 cp -R skeleton/SYSTEM/res "$B/SYSTEM/res"
+# Chinese: the shared UI font only has Latin glyphs. Same-name replacement with Latin kept and GB2312 + kana
+# from Noto Sans CJK SC (see workspace/m21/other/cjkfont/README.md). Not put into skeleton/ because that is
+# shared with platforms that have less RAM.
+CJK=workspace/m21/other/cjkfont
+cp "$CJK/BPreplayBold-unhinted.otf" "$B/SYSTEM/res/BPreplayBold-unhinted.otf"
 cp -R skeleton/SYSTEM/$PLATFORM "$B/SYSTEM/$PLATFORM"
 cp -R skeleton/EXTRAS/Bios "$B/EXTRAS/Bios"
 cp -R skeleton/EXTRAS/Roms "$B/EXTRAS/Roms"
@@ -75,6 +80,7 @@ cp "$BIN/clear_recent.elf"   "$T/Clear Recently Played.pak/"
 cp "$BIN/convertboxart.elf"  "$T/Convert BoxArt.pak/"
 cp "$OLD/outer/Tools/$PLATFORM/Files.pak/MyCommander.elf" "$T/Files.pak/"
 cp -r workspace/all/Commander/res "$T/Files.pak/"
+cp "$CJK/Files.pak/res/FreeSans.ttf" "$T/Files.pak/res/FreeSans.ttf"   # Chinese file names in the file manager
 
 # ---- cores target --------------------------------------------------------------------------
 mkdir -p "$S/cores"

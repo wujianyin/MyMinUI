@@ -30,6 +30,7 @@ BASEZIP=/path/MyMinUI-20260208b-0-m21.zip sh workspace/m21/other/dockerbuild/pac
 ```
 
 - 新编的:minui、minarch、keymon、libmsettings、show、overclock、Clock/Input/Clear Recently Played/Convert BoxArt 四个 pak 的程序。
+- 中文字体:`workspace/m21/other/cjkfont/` 里的同名替换件会被 `package.sh` 放进包里(`.system/res/BPreplayBold-unhinted.otf` 和 `Tools/m21/Files.pak/res/FreeSans.ttf`),不需要再手动装。
 - 取自上游最后一个 m21 发布包(`BASEZIP`):`rootfs.ext2`、24 个核心 `.so`、`MyCommander.elf`(Files.pak)、`prboom.wad`、`m21/libmusl/libmsettings.so`。
   这些现在在本机编不了(核心要大内存加联网克隆源码,Commander 是 C++),和上一个发布包同一来源。
 - 不含 `ZXS.pak`(fuse 核心还没有 m21 版)。
