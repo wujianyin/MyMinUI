@@ -45,7 +45,7 @@ printf 'ncm\n'             > /.userdata/m21/usb_nettype
 
 ## 5. 为什么会损坏(推断)
 
-见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md` 末尾:设备读写挂载 SD 的同时,USB Storage 读写模式让电脑也能写同一份 FAT。USB Mode 现在默认只读;不要在读写模式下往卡里拷文件,用读卡器。
+见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.zh-CN.md` 末尾:设备读写挂载 SD 的同时,USB Storage 读写模式让电脑也能写同一份 FAT。USB Mode 现在默认只读;不要在读写模式下往卡里拷文件,用读卡器。
 
 ## 6. 恢复后核对(adb)
 

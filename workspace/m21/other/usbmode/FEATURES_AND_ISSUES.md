@@ -1,142 +1,144 @@
-# USB Mode.pak(m21)新增功能与问题点总结
+# USB Mode.pak (m21) — New Features and Issues Summary
 
-范围:2026-10-19 ~ 2026-10-20 这一轮开发(USB Host、ext4、串口/网络的 Windows 支持、共享上网脚本、诊断工具、菜单二级化)。
-细节与调试过程见 `NOTES.md`(§4–§7),使用说明见 `README.md`。
+> 中文版: [FEATURES_AND_ISSUES.zh-CN.md](FEATURES_AND_ISSUES.zh-CN.md)
 
-## 0. 功能状态总览(依据用户实测,2026-10-20)
+Scope: development round 2026-10-19 ~ 2026-10-20 (USB Host, ext4, serial/network Windows support, internet-sharing scripts, diagnostics, two-level menus).
+Details and debugging notes: `NOTES.md` (§4–§7); usage: `README.md`.
 
-图例:✅ 正常 · ⚠ 部分可用/可恢复 · ❌ **完全不可用**
+## 0. Feature status overview (user testing, 2026-10-20)
 
-### ❌ 完全不可用
-| 功能 | 现象 | 原因/说明 |
+Legend: ✅ works · ⚠ partly works / recoverable · ❌ **unusable**
+
+### ❌ Unusable
+| Feature | Symptom | Cause / notes |
 |---|---|---|
-| 设备上的 `curl` | http、https 都不行 | 自带 curl 编译时没有任何协议(`Protocols:` 为空),设备工具限制,不是 USB 网络问题 |
-| 设备上 `wget` 访问 https | https 不行(http 可用) | 自带 wget 无 TLS |
-| Windows + ECM 网络类型 | 不可用(预期) | Windows 没有内置 ECM 驱动,Windows 请用 NCM(Win11)或 RNDIS;未专门实测 |
-| macOS + RNDIS 网络类型 | 不可用(预期) | macOS 没有 RNDIS 驱动,只验证到枚举;Mac 请用 ECM 或 NCM |
+| On-device `curl` | Neither http nor https works | Stock curl was built with no protocols (`Protocols:` empty); device tool limitation, not a USB network issue |
+| On-device `wget` for https | https fails (http works) | Stock wget has no TLS |
+| Windows + ECM network type | Unusable (expected) | Windows has no inbox ECM driver; use NCM (Win11) or RNDIS on Windows; not specifically tested |
+| macOS + RNDIS network type | Unusable (expected) | macOS has no RNDIS driver; only enumeration verified; use ECM or NCM on Mac |
 
-### ⚠ 部分可用 / 可恢复
-| 功能 | 现象 | 处理方式 |
+### ⚠ Partly works / recoverable
+| Feature | Symptom | Mitigation |
 |---|---|---|
-| ADB 开关 | 偶发:切换 USB Network、USB Host 等其他开关后 adb 失效 | 在菜单里把 ADB 关掉再打开即可恢复(用户确认);根因未查 |
-| Windows 共享网络(NCM / RNDIS) | 能识别、`ping 8.8.8.8` 通,但 `ping www.baidu.com` 有问题(域名解析) | 未解决,见 §4 第 1 项 |
-| USB Host 的非存储设备 | 只能识别,没验证功能 | 键盘/手柄等未测 |
-| USB Host 供电 | Type-C 不供 5V | 必须用带外部供电的 hub |
+| ADB toggle | Occasional: adb stops working after toggling USB Network, USB Host, or other switches | Turn ADB off then on again in the menu (user confirmed); root cause not investigated |
+| Windows internet sharing (NCM / RNDIS) | Link comes up, `ping 8.8.8.8` works, but `ping www.baidu.com` fails (DNS) | Unresolved; see §4 item 1 |
+| USB Host non-storage devices | Enumeration only; function not verified | Keyboard/gamepad etc. untested |
+| USB Host power | Type-C port does not supply 5 V | Must use a self-powered hub |
 
-### ✅ 正常
-| 功能 | 平台/范围 |
+### ✅ Works
+| Feature | Platform / scope |
 |---|---|
-| USB Storage(读写/只读) | Windows、macOS 均可挂载读取 |
-| USB Serial(CDC-ACM) | Windows 识别为 COM 口并可进入 shell;开机勾选串口也通过 |
-| USB Network ECM / NCM | macOS 下正常,`ping www.baidu.com` 正常 |
-| USB Network NCM / RNDIS | Windows 可识别并拿到 192.168.7.2 |
-| USB Host(带供电 hub) | FAT32、EXT4、NTFS 的 U 盘可挂载读取;其他 USB 设备可识别 |
-| 菜单(二级菜单、说明页、Boot Defaults) | 设备屏幕显示正常 |
+| USB Storage (RW/RO) | Mount and read on Windows and macOS |
+| USB Serial (CDC-ACM) | Windows sees a COM port and shell works; boot default with serial also works |
+| USB Network ECM / NCM | Works on macOS; `ping www.baidu.com` OK |
+| USB Network NCM / RNDIS | Windows enumerates and gets 192.168.7.2 |
+| USB Host (powered hub) | FAT32, EXT4, NTFS USB sticks mount and read; other USB devices enumerate |
+| Menu (submenus, help pages, Boot Defaults) | Displays correctly on device screen |
 
-## 1. 新增功能一览
+## 1. New features
 
-### 1.1 USB Host(OTG 主机)子页面
-| 功能 | 说明 |
+### 1.1 USB Host (OTG host) sub page
+| Feature | Description |
 |---|---|
-| 主机模式持久化 | 退出 pak 后主机模式不再被关掉(后台守护进程 `usbmode.elf --host-daemon`),重新进入时按真实角色(读 `otg_role`)显示 |
-| 设备列表 + 存储自动挂载 | 枚举 USB 设备;U 盘分区挂到 `/mnt/SDCARD/USB/<sdXn>`(文件管理器可直接看到) |
-| 存储行 A 键动作菜单 | Eject / Mount-retry / Details / Cancel |
-| 非破坏性弹出 | 弹出后设备仍挂着(不再 SCSI delete),界面显示 "ejected (safe to unplug)",可从菜单重新挂载,无需重新插拔;同时释放系统自动挂载的 `/mnt/exUDISK` |
-| 任意设备的详情页 | 类型、VID:PID、端口、速度、USB 版本、厂商、供电、序列号、接口/驱动、挂载点 |
-| ext2/3/4 U 盘 | 通过原厂 `fuse2fs` 挂载(先 rw 再 ro 兜底);vfat/exfat/ntfs(只读)走内核 `mount()` |
-| 未知文件系统诊断 | 无法识别时显示魔数并写 `/mnt/SDCARD/usbprobe.txt` |
-| 实测 | 带供电 hub:FAT32、EXT4、NTFS 的 U 盘均可挂载读取;其他 USB 设备可识别 |
-| 注意 | Type-C 口**不供 5V**,必须用自供电 USB Hub |
+| Host mode persistence | Host mode stays on after leaving the pak (background daemon `usbmode.elf --host-daemon`); re-entry shows the real role (reads `otg_role`) |
+| Device list + auto-mount storage | Enumerates USB devices; USB stick partitions mount under `/mnt/SDCARD/USB/<sdXn>` (visible in the file manager) |
+| Storage row A-button action menu | Eject / Mount-retry / Details / Cancel |
+| Non-destructive eject | After eject the device node remains (no SCSI delete); UI shows "ejected (safe to unplug)"; remount from menu without replugging; also releases system auto-mount `/mnt/exUDISK` |
+| Details page for any device | Type, VID:PID, port, speed, USB version, manufacturer, power, serial, interfaces/drivers, mount point |
+| ext2/3/4 USB sticks | Mount via stock `fuse2fs` (rw first, ro fallback); vfat/exfat/ntfs (read-only) via kernel `mount()` |
+| Unknown filesystem diagnostics | Shows magic bytes when unrecognized; writes `/mnt/SDCARD/usbprobe.txt` |
+| Verified | With powered hub: FAT32, EXT4, NTFS sticks mount and read; other USB devices enumerate |
+| Note | Type-C port **does not supply 5 V**; must use a self-powered USB hub |
 
-### 1.3 菜单重构(二级菜单,已在设备屏幕上确认显示和操作正常)
-| 功能 | 说明 |
+### 1.3 Menu refactor (two-level menus; display and operation confirmed on device screen)
+| Feature | Description |
 |---|---|
-| 主菜单 7 项 | USB Storage、ADB、USB Serial、USB Network(A 进二级)、USB Host、Boot Defaults(A 进二级)、Return to MinUI;行数按屏幕高度自适应(1280x720@2x = 8 行),放不下时可滚动 |
-| USB Network 二级菜单 | Mode(OFF / +Internet / Local only)、Network Type(ECM/NCM/RNDIS)、How to connect(Windows/macOS/Linux 可滚动说明页:该选哪种类型、电脑 IP、脚本位置、运行命令、如何停止) |
-| Boot Defaults 二级菜单 | 勾选框:ADB、USB Storage(Off/RW/RO)、USB Serial、USB Network + Network Type;串口与网络互斥;改动即保存。取代了原来的 Boot Default / Boot USB Network 两行 |
-| 开机配置 3 行格式 | 行1 `adb_only|adb_ums_rw|adb_ums_ro|ums_rw|ums_ro|off`,行2 `net|-`,行3 `serial|-`;旧 1~2 行格式兼容;`tomato.m21` 已支持开机不启 ADB、开串口 |
-| USB Storage 默认只读 | 切换顺序改为 OFF → **只读(RO)** → 读写(RW) → OFF,按一次右键只会先到只读;读写显示为 `ON (Read-Write, risky)`,并在状态栏警告"电脑和设备同时写 SD 卡会损坏文件系统,请优先只读,用读卡器拷文件"。Boot Defaults 里的 USB Storage 同样 |
-| 删除 On Exit to MinUI | 退出 USB Mode 一律自动关闭 USB Storage(避免设备与电脑同时写同一张 SD 卡) |
-| 脚本位置 | 共享网络/诊断脚本只放在 `Tools/m21/USB Mode.pak/host-tools/`,不再复制到 SD 根目录;说明页写明路径 |
+| Main menu 7 items | USB Storage, ADB, USB Serial, USB Network (A → submenu), USB Host, Boot Defaults (A → submenu), Return to MinUI; row count adapts to screen height (1280x720@2x = 8 rows), scroll when needed |
+| USB Network submenu | Mode (OFF / +Internet / Local only), Network Type (ECM/NCM/RNDIS), How to connect (scrollable Windows/macOS/Linux help: which type to pick, host IP, script location, commands, how to stop) |
+| Boot Defaults submenu | Checkboxes: ADB, USB Storage (Off/RW/RO), USB Serial, USB Network + Network Type; serial and network mutually exclusive; changes save immediately. Replaces old Boot Default / Boot USB Network rows |
+| Boot config 3-line format | Line 1 `adb_only|adb_ums_rw|adb_ums_ro|ums_rw|ums_ro|off`, line 2 `net|-`, line 3 `serial|-`; old 1–2 line format still supported; `tomato.m21` supports boot without ADB and with serial |
+| USB Storage default read-only | Cycle order OFF → **RO** → RW → OFF; one Right press only reaches RO first; RW shows `ON (Read-Write, risky)` and status-bar warning that simultaneous PC/device writes to the SD card can corrupt the filesystem—prefer RO and use a card reader to copy files. Same in Boot Defaults USB Storage |
+| Removed On Exit to MinUI | Leaving USB Mode always turns USB Storage off (avoids PC and device writing the same SD card) |
+| Script location | Internet-sharing/diagnostic scripts live only under `Tools/m21/USB Mode.pak/host-tools/`, no longer copied to SD root; help pages show the path |
 
-### 1.2 USB 串口与 USB 网络(设备模式)——支持 Windows
-| 功能 | 说明 |
+### 1.2 USB serial and USB network (device mode) — Windows support
+| Feature | Description |
 |---|---|
-| USB Serial 改为标准 CDC-ACM | 新增 `f_acm_x.ko`;Windows 自带 `usbser`,Mac/Linux 免驱,设备端为 `ttyGS0`(原 `gser` 是厂商类,Windows 无驱动) |
-| Network Type 选择 | 在 USB Network / Boot Defaults 二级菜单里选 `ECM / NCM / RNDIS`,保存在 `.userdata/m21/usb_nettype`,开机也生效 |
-| ECM / NCM / RNDIS 三种网络 | 新增 `f_ncm_x.ko`、`f_rndis_x.ko`(ECM 为原有);ECM=Mac/Linux,NCM=Mac/Linux/Win11,RNDIS=Windows 10/11 |
-| 串口与网络互斥 | UDC 只有 1 个中断端点,开其中一个会自动关另一个并提示;ADB + 存储 + 网络仍可共存 |
-| 设备类 EF/02/01 | 串口或网络开启时设置 IAD 复合设备类,Windows 才会按功能绑定内置驱动 |
-| 开机默认网络/串口 | `usb_boot_mode.cfg` 第 2 行 `net`、第 3 行 `serial` + `usb_nettype`(现由 Boot Defaults 二级菜单设置) |
-| RNDIS 的 Windows 兼容 | RNDIS 排在配置第一位 + MS OS 兼容 ID 描述符 + `bDataInterface` 修正(见 §2) |
+| USB Serial switched to standard CDC-ACM | New `f_acm_x.ko`; Windows inbox `usbser`, Mac/Linux driverless; device side `ttyGS0` (old `gser` was vendor class, no Windows driver) |
+| Network Type selector | Choose `ECM / NCM / RNDIS` in USB Network / Boot Defaults submenus; saved in `.userdata/m21/usb_nettype`, applies at boot |
+| ECM / NCM / RNDIS | New `f_ncm_x.ko`, `f_rndis_x.ko` (ECM existed); ECM=Mac/Linux, NCM=Mac/Linux/Win11, RNDIS=Windows 10/11 |
+| Serial vs network mutex | UDC has one interrupt endpoint; enabling one auto-disables the other with a prompt; ADB + storage + network can still coexist |
+| Device class EF/02/01 | When serial or network is on, set IAD composite class so Windows binds inbox drivers per function |
+| Boot default network/serial | `usb_boot_mode.cfg` line 2 `net`, line 3 `serial` + `usb_nettype` (now via Boot Defaults submenu) |
+| RNDIS Windows compatibility | RNDIS first in config + MS OS compatible ID descriptors + `bDataInterface` fix (see §2) |
 
-### 1.3 共享上网(宿主 NAT)脚本——三个平台
-设备侧已自动设默认路由(经 192.168.7.2)和 DNS;宿主必须做 NAT:
-| 平台 | 脚本 | 说明 |
+### 1.3 Internet sharing (host NAT) scripts — three platforms
+Device side sets default route via 192.168.7.2 and DNS automatically; the host must NAT:
+| Platform | Script | Notes |
 |---|---|---|
-| macOS | `share-internet-macos.sh on/off/status` | pf anchor NAT,需 sudo |
-| Linux | `share-internet-linux.sh on/off` | iptables MASQUERADE,需 sudo |
-| Windows | `share-internet-windows.bat`(调用 `.ps1`)`on/off/status` | 先试 `New-NetNat`;不可用(家庭版常见,报"无效类")就自动回退到 ICS(把 ICS 内网地址通过注册表改成 192.168.7.2) |
+| macOS | `share-internet-macos.sh on/off/status` | pf anchor NAT, sudo required |
+| Linux | `share-internet-linux.sh on/off` | iptables MASQUERADE, sudo required |
+| Windows | `share-internet-windows.bat` (calls `.ps1`) `on/off/status` | Try `New-NetNat` first; if unavailable (common on Home, "invalid class" error) fall back to ICS (registry tweaks ICS internal address to 192.168.7.2) |
 
-四个脚本在 pak 的 `host-tools/`,同时放了一份在 **SD 卡根目录**(方便在电脑上直接复制)。
+All four scripts are in the pak `host-tools/`; a copy was also placed at **SD card root** (easy to copy on a PC).
 
-### 1.4 诊断工具
-- `host-tools/usb-diag.sh`(设备端)+ `usb-diag-windows.bat`:依次测网关、各 DNS 的 ping、`nslookup`、大包、系统解析器,结果保存为 `usb-diag.txt` 并复制到剪贴板(设备上位于 `Tools/m21/USB Mode.pak/host-tools/`)。
-- `dhcpd_mini` 现在把收发的 DHCP 报文写到 `/tmp/dhcpd.log`。
-- 设备 UDC 调试开关:`/sys/devices/platform/soc@3000000/4100000.udc-controller/{queue_debug,irq_debug}` 写 1。
+### 1.4 Diagnostics
+- `host-tools/usb-diag.sh` (device) + `usb-diag-windows.bat`: gateway, ping each DNS, `nslookup`, large packets, system resolver; saves `usb-diag.txt` and copies to clipboard (on device under `Tools/m21/USB Mode.pak/host-tools/`).
+- `dhcpd_mini` now logs DHCP packets sent/received to `/tmp/dhcpd.log`.
+- Device UDC debug switches: write 1 to `/sys/devices/platform/soc@3000000/4100000.udc-controller/{queue_debug,irq_debug}`.
 
-## 2. 问题点、根因与修复
+## 2. Issues, root causes, and fixes
 
-| # | 现象 | 根因 | 修复 / 结论 |
+| # | Symptom | Root cause | Fix / conclusion |
 |---|---|---|---|
-| 1 | 退出 pak 后主机模式又变回设备模式 | 状态只在 UI 进程里 | 后台守护进程 + 状态文件 `/tmp/usbhost.state`,进入时读 `otg_role` |
-| 2 | 弹出 U 盘后一直 "reading",要重新插拔 | 弹出时做了 SCSI `device/delete` | 弹出改为 umount+sync+标记 `ejected`,不删设备;菜单可重新挂载 |
-| 3 | ext4 显示 unknown / 魔数 `55534243` | 那支 58.5GB 三分区 U 盘在 EHCI 下传输读出损坏(数据里出现 CBW "USBC");换 4KB 请求上限也没用 | 硬件/传输层问题,不是 ext4;换 ext4 TF 卡正常。已写入 NOTES,**不要对该 U 盘写入** |
-| 4 | Windows 上串口/网络"没有驱动" | `gser` 是厂商类;Windows 无 ECM 驱动;设备类不是 EF/02/01 | 换 CDC-ACM;提供 NCM/RNDIS;设备类 EF/02/01 |
-| 5 | NCM/RNDIS 内核 oops(`strlen` in `if_nlmsg_size`) | 厂商内核 `struct net_device` 比主线大(`netdev_priv` 偏移 1600 vs 1344),`struct eth_dev` 叠在 net_device 尾部;ECM 恰好没事(`wrap/unwrap` 为 NULL) | 构建树头文件里给 `net_device` 末尾加 `char sunxi_tail_pad[256]`(`kmod/netdevice_h_pad.patch`),**所有网络模块重编** |
-| 6 | RNDIS 类属性读回 0 | configfs 用 `%02hhx` 解析 | 写 `e0`/`01`/`03`,不要写 `0xe0` |
-| 7 | 切换类型后网卡变成 usb1/usb2 | 每个注册过的网络功能占一个 `usbN` | `usbnet.sh up` 读 `functions/<type>/ifname`,清理旧的 `usbN` |
-| 8 | 从 `adb shell` 里改 gadget,脚本中途消失 | 解绑 UDC 时 adb 自己也断了;stock 的 `sleep` 被连带杀掉 | 脚本用 `(trap "" HUP; sh script &)` 后台跑,用 `usleep` |
-| 9 | **Windows RNDIS 代码 10**(最难) | 设备端 `rndis_setup` 一次没被调用(Windows 在配置后对设备无任何请求)。最终:① RNDIS 必须是配置中**第一个**功能(接口 0/1),在 ADB 后面(接口 1/2)必失败;② `f_rndis.c` 把 Call Management 的 `bDataInterface` 写死为 1;③ E0/01/03 路线的"Internet 共享设备"驱动在此启动失败,改用 MS OS 兼容 ID 路线 | `usbnet.sh on rndis` / `tomato` 建 RNDIS 链接时先摘掉 ffs/acm 链接,建完再补回;`kmod/f_rndis.patch`;`os_desc`(`MSFT100`、`0xcd`、`RNDIS`/`5162001`)+ `bcdDevice` 0x0511(Windows 按 VID/PID/REV 缓存 MS OS 有无) |
-| 10 | Windows 拿到 169.254 | 从 `adb shell` 直接跑 `usbnet.sh up` 时 `dhcpd_mini.elf`(glibc)在 stock 根文件系统里 "not found" | 菜单/开机都在 chroot 内运行,不受影响;测试用 `chroot /overlay /tmp/dhcpd_mini.elf ...` |
-| 11 | Windows 共享脚本 `New-NetNat` 报"无效类" | 该 Windows 缺少 NetNat 的 WMI 类 | 自动回退 ICS(注册表 `ScopeAddress`=192.168.7.2) |
-| 12 | 设备上 8.8.8.8 通、`www.baidu.com` 卡住(Windows 共享) | **未定位**。Mac 路径下 DNS 正常;Windows 路径的诊断日志被 Ctrl+C 中断(只测到网关) | 见 §4 待办 |
+| 1 | Host mode reverts to device after leaving pak | State lived only in UI process | Background daemon + state file `/tmp/usbhost.state`; read `otg_role` on entry |
+| 2 | After eject, stick stuck on "reading", must replug | Eject did SCSI `device/delete` | Eject is umount+sync+mark `ejected`, no device delete; remount from menu |
+| 3 | ext4 shows unknown / magic `55534243` | That 58.5 GB three-partition stick returns corrupted reads on EHCI (CBW "USBC" in data); 4 KB request cap did not help | Hardware/transport, not ext4; ext4 TF card OK. Documented in `NOTES.md`; **do not write to that stick** |
+| 4 | Windows "no driver" for serial/network | `gser` vendor class; no Windows ECM; device class not EF/02/01 | CDC-ACM; NCM/RNDIS; device class EF/02/01 |
+| 5 | NCM/RNDIS kernel oops (`strlen` in `if_nlmsg_size`) | Vendor `struct net_device` larger than mainline (`netdev_priv` offset 1600 vs 1344); `struct eth_dev` overlapped tail of net_device; ECM OK (`wrap/unwrap` NULL) | Add `char sunxi_tail_pad[256]` at end of `net_device` in build-tree header (`kmod/netdevice_h_pad.patch`); **rebuild all network modules** |
+| 6 | RNDIS class attributes read back 0 | configfs parsed with `%02hhx` | Write `e0`/`01`/`03`, not `0xe0` |
+| 7 | After type switch, NIC becomes usb1/usb2 | Each registered network function owns a `usbN` | `usbnet.sh up` reads `functions/<type>/ifname`, cleans old `usbN` |
+| 8 | Gadget changes from `adb shell` kill script mid-run | Unbinding UDC drops adb; stock `sleep` killed too | Script runs as `(trap "" HUP; sh script &)` in background, uses `usleep` |
+| 9 | **Windows RNDIS code 10** (hardest) | Device `rndis_setup` never called once (Windows sent no requests after config). Fixes: ① RNDIS must be **first** function in config (ifaces 0/1); after ADB (ifaces 1/2) always fails; ② `f_rndis.c` hardcoded Call Management `bDataInterface` to 1; ③ E0/01/03 "Internet sharing device" driver failed here; switched to MS OS compatible ID path | On `usbnet.sh on rndis` / `tomato` RNDIS link, drop ffs/acm links first, restore after; `kmod/f_rndis.patch`; `os_desc` (`MSFT100`, `0xcd`, `RNDIS`/`5162001`) + `bcdDevice` 0x0511 (Windows caches MS OS presence by VID/PID/REV) |
+| 10 | Windows gets 169.254 | Running `usbnet.sh up` directly from `adb shell` → `dhcpd_mini.elf` (glibc) "not found" on stock rootfs | Menu/boot run inside chroot, unaffected; test with `chroot /overlay /tmp/dhcpd_mini.elf ...` |
+| 11 | Windows sharing script `New-NetNat` "invalid class" | Windows missing NetNat WMI class | Auto fallback to ICS (registry `ScopeAddress`=192.168.7.2) |
+| 12 | Device: 8.8.8.8 OK, `www.baidu.com` hangs (Windows sharing) | **Not root-caused**. Mac path DNS OK; Windows path diag log interrupted by Ctrl+C (only gateway tested) | See §4 todos |
 
-## 3. 兼容性/验证矩阵
-| 项目 | Mac | Windows | 说明 |
+## 3. Compatibility / verification matrix
+| Item | Mac | Windows | Notes |
 |---|---|---|---|
-| USB Storage | ✅ 挂载读取正常 | ✅ 挂载读取正常 | 用户实测 |
-| ADB | ✅ | ✅(开关正常) | ⚠ 偶发:切换 USB Network / USB Host 等其他开关后 adb 失效,需把 ADB 关了再开(见 §4 第 9 项) |
-| USB Host(U 盘/TF/ext4/Hub) | — | — | ✅ 带供电 hub:FAT32、EXT4、NTFS U 盘可挂载读取,其他 USB 设备可识别(用户实测);Type-C 不供 5V,必须自供电 hub |
-| USB 网络 ECM | ✅ ping www.baidu.com 正常 | ❌ Windows 无内置 ECM 驱动(预期,未实测) | 仅 Mac/Linux |
-| USB 网络 NCM | ✅ DHCP+ping 大包;ping www.baidu.com 正常 | ✅ 可识别(Win11);共享后 ping www.baidu.com 仍有问题 | |
-| USB 网络 RNDIS | ❌(Mac 无驱动,只验证枚举/控制通路) | ✅ 可识别(拿到 192.168.7.2);共享后 ping www.baidu.com 仍有问题 | 必须 RNDIS 排第一 |
-| USB 串口 CDC-ACM | ✅ 双向收发 | ✅ 正确识别为 COM 口,可连接进入类似 adb shell 的界面(用户实测) | 开机 `adb_only`+`serial` 重启实测通过 |
-| 共享上网 | ✅(pf) | 🟡 8.8.8.8 通,域名解析卡住,待查 | |
-| 菜单界面(二级菜单、全屏、说明页、互斥提示) | — | — | ✅ 用户在设备屏幕确认显示和二级菜单正常;运行时切换/绑定失败回退分支未逐项测 |
+| USB Storage | ✅ mount/read OK | ✅ mount/read OK | User tested |
+| ADB | ✅ | ✅ (toggle OK) | ⚠ Occasional: after toggling USB Network / USB Host etc., adb fails until ADB off/on (see §4 item 9) |
+| USB Host (stick/TF/ext4/hub) | — | — | ✅ Powered hub: FAT32, EXT4, NTFS sticks mount/read; other USB devices enumerate (user tested); Type-C no 5 V, self-powered hub required |
+| USB network ECM | ✅ `ping www.baidu.com` OK | ❌ No inbox ECM on Windows (expected, untested) | Mac/Linux only |
+| USB network NCM | ✅ DHCP + large ping; `ping www.baidu.com` OK | ✅ Enumerates (Win11); after sharing, `ping www.baidu.com` still problematic | |
+| USB network RNDIS | ❌ (no Mac driver; enumeration/control only) | ✅ Enumerates (gets 192.168.7.2); after sharing, `ping www.baidu.com` still problematic | RNDIS must be first |
+| USB serial CDC-ACM | ✅ bidirectional | ✅ Correct COM port, shell-like session (user tested) | Boot `adb_only`+`serial` reboot verified |
+| Internet sharing | ✅ (pf) | 🟡 8.8.8.8 OK, DNS hangs, TBD | |
+| Menu UI (submenus, fullscreen, help, mutex hints) | — | — | ✅ User confirmed display and submenus on device; runtime toggle/bind-failure fallback branches not all tested |
 
-## 4. 未解决 / 待办
-1. **Windows 共享后域名解析卡住**:先在 RNDIS/NCM + Windows 共享已 `on` 的状态下完整运行 `usb-diag-windows.bat`(不要 Ctrl+C,约 1 分钟)。
-   **切换网络类型后 Windows 会出现新网卡,ICS 绑定的是旧网卡**,必须重新运行 `share-internet-windows.bat on`。
-2. Mac 路径下 `ping -s 1400 8.8.8.8` 100% 丢包(小包正常),`ECM` 模式下观察到;可能是 Mac 侧 NAT/MTU,也可能是大帧问题回归,待确认。
-3. 设备端工具的 https 能力:设备上 `wget` 只能访问 http,https 不行;自带 `curl` http/https 都不行(编译时没有任何协议)。这是设备自带工具的限制,不是 USB 网络问题;需要的话另找带 TLS 的 wget/curl 放进 pak。
-4. 菜单:显示和二级菜单已确认;仍未逐项测的是"开机关闭 ADB"组合、开机模式 `off`、绑定失败自动回退分支。
-5. Windows ICS 回退路径、`New-NetNat` 路径:脚本未经完整真机验证(ICS 路径已能让 8.8.8.8 通)。
-6. 58.5GB 三分区 U 盘的传输错误(可能需要按 VID:PID 加 quirks,未尝试)。
-7. `uh_tune_disk` 把 `max_sectors_kb` 限成 4 对该 U 盘无效且更慢,可以去掉。
-8. 设备当前状态:`usb_boot_mode.cfg`=`adb_only`+`net`、`usb_nettype`=`ncm`。SD 根目录的调试文件和 share/diag 脚本副本已清理(脚本只保留在 pak 的 host-tools 里)。
-9. **ADB 偶发失效**:切换 USB Network、USB Host 等其他开关后,偶尔 adb 连不上,需要在菜单里把 ADB 关掉再打开才恢复。未排查;怀疑是 `apply_usb_config()` 解绑/重绑 UDC 时 adbd 的 FunctionFS 端点状态没有跟着重置(假设,未验证)。下次复现时在设备上看 `cat /sys/kernel/config/usb_gadget/g1/UDC`、`ls configs/c.1`、`ps | grep adbd`、`dmesg | tail`。
-10. USB Host 的其余设备(键盘/手柄等)只验证了"能识别",没有验证功能。
+## 4. Open / todo
+1. **DNS hang after Windows sharing**: With RNDIS/NCM + Windows sharing already `on`, run `usb-diag-windows.bat` to completion (no Ctrl+C, ~1 minute).
+   **After switching network type Windows gets a new NIC; ICS binds the old one** — rerun `share-internet-windows.bat on`.
+2. Mac path: `ping -s 1400 8.8.8.8` 100% loss (small packets OK), seen in `ECM` mode; may be Mac-side NAT/MTU or large-frame regression; TBD.
+3. On-device https: `wget` http only; stock `curl` http/https both fail (no protocols at build time). Device tool limit, not USB network; ship TLS-enabled wget/curl in pak if needed.
+4. Menu: display and submenus confirmed; not fully tested: boot with ADB off combos, boot mode `off`, auto-rollback on bind failure.
+5. Windows ICS fallback vs `New-NetNat` paths: scripts not fully verified on real hardware (ICS path reaches 8.8.8.8).
+6. 58.5 GB three-partition stick transfer errors (may need VID:PID quirks; not tried).
+7. `uh_tune_disk` capping `max_sectors_kb` to 4 ineffective and slower on that stick; can remove.
+8. Current device state: `usb_boot_mode.cfg`=`adb_only`+`net`, `usb_nettype`=`ncm`. Debug files and share/diag copies at SD root cleaned (scripts only in pak `host-tools`).
+9. **ADB occasional failure**: After toggling USB Network, USB Host, etc., adb sometimes disconnects; fix by ADB off/on in menu. Not debugged; suspect `apply_usb_config()` UDC unbind/rebind does not reset adbd FunctionFS endpoint state (hypothesis, unverified). On repro: `cat /sys/kernel/config/usb_gadget/g1/UDC`, `ls configs/c.1`, `ps | grep adbd`, `dmesg | tail` on device.
+10. USB Host other devices (keyboard/gamepad): enumeration only; function not verified.
 
-## 5. 相关提交(`fork/main`)
-- USB Host:`4f39fb3` 持久化 · `f8d379e` A 键菜单 · `519994a` 非破坏性弹出 · `74ef8f7` 设备详情 · `33573a8` ext2/3/4 · `3f31bb9` 未知文件系统诊断 · `791087a` 读取参数
-- Windows 支持:`a7d9a65` ACM/NCM/RNDIS + net_device 填充 + 设备类 · `123fcb9` RNDIS 排第一 + MS OS + 描述符修复
-- 共享与诊断:`d2ed7ce` Windows 共享脚本 · `00da38b` ICS 回退 · `b470884` 诊断脚本 · `9e753c6` 本文档
-- 菜单重构:`48ff1b8` 二级菜单/说明页/开机 3 行配置 · `4dfe4c8` 行数随屏幕高度 · `3faa59d` 删除 On Exit · `12bf099` 脚本只放 pak 的 host-tools
+## 5. Related commits (`fork/main`)
+- USB Host: `4f39fb3` persistence · `f8d379e` A-button menu · `519994a` non-destructive eject · `74ef8f7` device details · `33573a8` ext2/3/4 · `3f31bb9` unknown FS diagnostics · `791087a` read tuning
+- Windows support: `a7d9a65` ACM/NCM/RNDIS + net_device padding + device class · `123fcb9` RNDIS first + MS OS + descriptor fixes
+- Sharing & diagnostics: `d2ed7ce` Windows sharing script · `00da38b` ICS fallback · `b470884` diagnostics · `9e753c6` this document
+- Menu refactor: `48ff1b8` submenus/help/boot 3-line cfg · `4dfe4c8` rows vs screen height · `3faa59d` remove On Exit · `12bf099` scripts only in pak `host-tools`
 
 
-## 附:2026-10-21 TF 卡损坏的分析
+## Appendix: 2026-10-21 TF card damage analysis
 
-- 卡:Samsung(manfid `0x1b`)、型号 EB2MW、2017-06、29.8 GiB,容量与正品 32GB 吻合;本次开机内核日志无 MMC/I/O 错误,但有 `FAT-fs: Volume was not properly unmounted`。**没做全盘读写测试**。
-- 推断的原因(**未证实**):设备把 SD 以读写方式挂载着,USB Storage 又把同一块设备原样导出给电脑,两边都能写同一份 FAT,没有互斥;损坏前的卡上有 Windows/macOS 生成的 `.Spotlight-V100`、`.fseventsd`、`System Volume Information`,说明电脑在导出期间确实写过卡。此外电源是拨动开关,直接断电时卡仍处于读写挂载。
-- 对策:USB Storage 默认只读并对读写模式给警告(本次改动);平时用读卡器传文件;出现"未正常卸载"提示后在 Mac 上跑 `fsck_msdos`;定期备份存档/配置;这张卡已用约 9 年,建议备份后更换。
+- Card: Samsung (manfid `0x1b`), model EB2MW, 2017-06, 29.8 GiB, capacity matches genuine 32 GB; this boot kernel log had no MMC/I/O errors but `FAT-fs: Volume was not properly unmounted`. **No full-card read/write test done.**
+- Inferred cause (**unconfirmed**): Device had SD mounted RW while USB Storage exported the same block device to the PC with no mutual exclusion; both could write the same FAT. Before damage the card had Windows/macOS `.Spotlight-V100`, `.fseventsd`, `System Volume Information`, so the PC did write during export. Power is a slide switch; abrupt power-off while SD still mounted RW.
+- Mitigations: USB Storage defaults RO with RW warning (this change); use a card reader for file transfer; after "not properly unmounted" run `fsck_msdos` on Mac; back up saves/config regularly; card ~9 years old—back up and replace.

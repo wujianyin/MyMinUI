@@ -1,6 +1,6 @@
 # MyMinUI on the SJGAM M21 / M22Pro (`m21` platform): status and known problems
 
-> 中文版 (the more detailed original, with the same section numbers): [M21_STATUS.zh-CN.md](M21_STATUS.zh-CN.md) | Back to [README.md](README.md)
+> 中文版 (the Chinese original, same section numbers): [M21_STATUS.zh-CN.md](M21_STATUS.zh-CN.md) | Back to [README.md](README.md)
 
 Written 2026-10-20, updated 2026-10-25. Purpose: before improving anything, find out what upstream did, what it did not do, and where the traps are.
 

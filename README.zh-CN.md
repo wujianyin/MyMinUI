@@ -1,6 +1,6 @@
 # MyMinUI-M22Pro
 
-> English (主文档 / primary): [README.md](README.md)。英文文档为主,本文是中文版,USB 部分的细节更全。
+> English (主文档 / primary): [README.md](README.md)。英文文档为主,本文是对应的中文版。
 
 这是 [Turro75/MyMinUI](https://github.com/Turro75/MyMinUI) 的 fork,后者又是 [shauninman/MinUI](https://github.com/shauninman/MinUI) 的 fork。
 上游的完整说明保留在 [README.upstream.md](README.upstream.md)(支持设备列表、功能、安装方法都在里面),这里只记录**本 fork 自己的目标、改动和进展**。
@@ -21,10 +21,10 @@
 - TF 卡损坏后的恢复清单和只读卡修复(`fsck.fat`):**[SD_RESTORE.zh-CN.md](SD_RESTORE.zh-CN.md)**([English](SD_RESTORE.md))。
 - 本地 Docker 构建、打包和校验 m21 发布包:**[workspace/m21/other/dockerbuild/](workspace/m21/other/dockerbuild/README.zh-CN.md)**([English](workspace/m21/other/dockerbuild/README.md))。
 - 中文字体(替换 MinUI 的系统字体,界面和 ROM 名都能显示汉字,不用重编译,发布包已内置):**[workspace/m21/other/cjkfont/](workspace/m21/other/cjkfont/README.zh-CN.md)**([English](workspace/m21/other/cjkfont/README.md))。
-- 内屏 60Hz 补丁(已在 M22Pro 上验证)和 FEL 救砖流程:**[workspace/m21/other/dtb_60fps/](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md)**。
+- 内屏 60Hz 补丁(已在 M22Pro 上验证)和 FEL 救砖流程:**[workspace/m21/other/dtb_60fps/](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.zh-CN.md)**。
 
 - 原厂固件镜像(SPI NOR 全部分区)和分析文档:**[firmware/sjgam-m22pro/](firmware/sjgam-m22pro/)**,
-  分析见 [ANALYSIS.md](firmware/sjgam-m22pro/ANALYSIS.md)。
+  分析见 [ANALYSIS.zh-CN.md](firmware/sjgam-m22pro/ANALYSIS.zh-CN.md)。
 - 要点:Linux 5.4.61 + musl 的 Tina Linux,16 MiB SPI NOR,系统只读且已满;MinUI 通过 `/usr/tomato` 钩子从 SD 卡启动,
   装坏了只要恢复 SD 卡内容即可,不会变砖。
 
@@ -56,8 +56,8 @@
 实现位置:
 - pak 与二进制:`skeleton/EXTRAS/Tools/m21/USB Mode.pak/`
 - 源码、内核模块、`tomato` 补丁、详细工作记录:`workspace/m21/other/usbmode/`
-  - [README.md](workspace/m21/other/usbmode/README.md) 简介
-  - [NOTES.md](workspace/m21/other/usbmode/NOTES.md) **完整工作记录**:踩过的坑、解决步骤、剩余问题
+  - [README.zh-CN.md](workspace/m21/other/usbmode/README.zh-CN.md) 简介
+  - [NOTES.zh-CN.md](workspace/m21/other/usbmode/NOTES.zh-CN.md) **完整工作记录**:踩过的坑、解决步骤、剩余问题
 - 厂商内核没有编译 ECM/NCM/RNDIS,所以 USB 网络用的是**外置内核模块**(`u_ether_x.ko`、`f_ecm_x.ko`),
   对 5.4.61 头文件加了若干结构体填充来匹配厂商内核布局。
 
@@ -80,21 +80,21 @@
 
 **完全不可用(依据实测):** 设备自带 `curl`(http/https 都不行,编译时无协议);`wget` 访问 https;Windows 下的 ECM 网络类型(无驱动,请用 NCM/RNDIS);macOS 下的 RNDIS(无驱动,请用 ECM/NCM)。
 **可恢复:** ADB 偶发在切换其他开关后失效,在菜单里把 ADB 关掉再打开即可。
-**部分可用:** Windows 共享网络后能 `ping 8.8.8.8` 但域名解析有问题(待查)。完整状态表见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md` §0。
+**部分可用:** Windows 共享网络后能 `ping 8.8.8.8` 但域名解析有问题(待查)。完整状态表见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.zh-CN.md` §0。
 
-- ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里新增 *USB Host (OTG)* 二级页:开关 Host、列出所有 USB 设备、存储设备自动挂载到 `/mnt/SDCARD/USB/<sdXn>` 并可安全弹出(带供电 hub 实测:FAT32、EXT4、NTFS 的 U 盘可挂载读取,其他 USB 设备可识别)。详见 NOTES.md §6.3。
+- ⚠️ **Type-C 口本身不对外供 5V**(设备树无 VBUS 控制,转接器灯不亮);OTG 主机模式必须用**带外部供电的 hub**。实测 hub + FAT32 U 盘可被识别(`sda1`),系统会自动把它挂到 `/mnt/exUDISK`;USB Mode 里新增 *USB Host (OTG)* 二级页:开关 Host、列出所有 USB 设备、存储设备自动挂载到 `/mnt/SDCARD/USB/<sdXn>` 并可安全弹出(带供电 hub 实测:FAT32、EXT4、NTFS 的 U 盘可挂载读取,其他 USB 设备可识别)。详见 NOTES.zh-CN.md §6.3。
 - 🟡 菜单显示和二级菜单已在设备屏幕确认;`off` 开机模式和“开机关闭 ADB”组合未测。
-- 🟡 USB 网络:macOS(ECM/NCM)和 Windows(NCM、RNDIS)已实测;Windows 共享上网后域名解析卡住、Mac ECM 大包丢包待查,详见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md`。
+- 🟡 USB 网络:macOS(ECM/NCM)和 Windows(NCM、RNDIS)已实测;Windows 共享上网后域名解析卡住、Mac ECM 大包丢包待查,详见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.zh-CN.md`。
 - ℹ️ USB 端点有限(3 对 bulk + 1 个 interrupt):串口与网络互斥,菜单(主菜单和 Boot Defaults)会自动关掉另一个并提示;ADB + 存储 + 网络可共存。
 - 🟡 设备本身**没有 WiFi 硬件/驱动**,上外网只能靠宿主机共享(Mac 上已实测可上外网);设备端自带的 `curl` 编译时没有任何协议(`Protocols:` 为空),
-  `https`/`http` 都会报 `Protocol not supported`,自带 `nc` 也不发数据;`wget` 只能访问 http,https 不行(用户实测);测试请用 `ping` 或 `wget` 访问 http(见 NOTES.md)。
-- ✅ 已修复:USB 网络大帧(>512 字节)收发损坏——原因是 sunxi UDC 的 DMA 要求 4 字节对齐,`u_ether` 的 `NET_IP_ALIGN` 让数据偏移了 2 字节(NOTES.md §6.2)。
+  `https`/`http` 都会报 `Protocol not supported`,自带 `nc` 也不发数据;`wget` 只能访问 http,https 不行(用户实测);测试请用 `ping` 或 `wget` 访问 http(见 NOTES.zh-CN.md)。
+- ✅ 已修复:USB 网络大帧(>512 字节)收发损坏——原因是 sunxi UDC 的 DMA 要求 4 字节对齐,`u_ether` 的 `NET_IP_ALIGN` 让数据偏移了 2 字节(NOTES.zh-CN.md §6.2)。
 - ℹ️ `dhcpd_mini` 只发一个固定租约(192.168.7.2),**有意**不下发网关/DNS(它服务的是宿主机,下发会劫持宿主机默认路由);设备端的默认路由/DNS 由 `usbnet.sh up`(和 `tomato`)直接设置。
 - 🟡 仓库里 `tomato` 的真实来源文件还没找到(构建目录 `build/FULL/m21/tomato` 被 `.gitignore` 忽略),
   目前 `tomato.m21` 只是设备上那一份的拷贝,需要合并回真正的来源。
-- 🟡 pak 还没有接入 `workspace` 的 makefile,`.elf`/`.ko` 是预编译后直接提交的;编译方法见 NOTES.md。
-- ⚠️ SD 卡以读写方式暴露给电脑的同时设备自己也在用它,有损坏风险;硬重启可能让 SD 变成只读(修复办法见 NOTES.md)。
-- ⚠️ 厂商内核的若干结构体与主线 5.4.61 不一致,新增外置模块前必须先核对偏移(NOTES.md 有方法和对照表)。
+- 🟡 pak 还没有接入 `workspace` 的 makefile,`.elf`/`.ko` 是预编译后直接提交的;编译方法见 NOTES.zh-CN.md。
+- ⚠️ SD 卡以读写方式暴露给电脑的同时设备自己也在用它,有损坏风险;硬重启可能让 SD 变成只读(修复办法见 NOTES.zh-CN.md)。
+- ⚠️ 厂商内核的若干结构体与主线 5.4.61 不一致,新增外置模块前必须先核对偏移(NOTES.zh-CN.md 有方法和对照表)。
 
 ## 目录速览
 
@@ -105,7 +105,7 @@ skeleton/EXTRAS/Tools/m21/<工具>.pak/lang/   各工具自己的语言包
 workspace/all/language/           语言选择器源码
 workspace/m21/other/dockerbuild/  Docker 构建、package.sh、verify.sh、build_fsckfat.sh
 skeleton/EXTRAS/Tools/m21/USB Mode.pak/   USB Mode pak(预编译)
-workspace/m21/other/usbmode/      USB Mode 的源码、内核模块、tomato 补丁、NOTES.md
+workspace/m21/other/usbmode/      USB Mode 的源码、内核模块、tomato 补丁、NOTES.zh-CN.md
 README.upstream.md                上游 README(原文)
 ```
 

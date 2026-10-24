@@ -1,6 +1,6 @@
 # MyMinUI-M22Pro
 
-> 中文版: [README.zh-CN.md](README.zh-CN.md) (the Chinese documents are the more detailed ones for the USB work; the English documents are the primary entry point.)
+> 中文版: [README.zh-CN.md](README.zh-CN.md). Every document in this fork has an English primary version (`X.md`) and a Chinese version (`X.zh-CN.md`) next to it; upstream's own documents are English only.
 
 This is a fork of [Turro75/MyMinUI](https://github.com/Turro75/MyMinUI), which is itself a fork of [shauninman/MinUI](https://github.com/shauninman/MinUI).
 The complete upstream README (supported devices, features, installation) is kept as [README.upstream.md](README.upstream.md).
@@ -26,9 +26,9 @@ Other platforms are left as upstream has them and have **not** been tested by th
 | [SD_RESTORE.md](SD_RESTORE.md) | Rebuilding a damaged SD card, repairing a read-only card (`fsck.fat`) | [SD_RESTORE.zh-CN.md](SD_RESTORE.zh-CN.md) |
 | [workspace/m21/other/dockerbuild/](workspace/m21/other/dockerbuild/README.md) | Local Docker build, packaging and verification of the m21 release zip | [README.zh-CN.md](workspace/m21/other/dockerbuild/README.zh-CN.md) |
 | [workspace/m21/other/cjkfont/](workspace/m21/other/cjkfont/README.md) | CJK font replacement files (already shipped in the package) | [README.zh-CN.md](workspace/m21/other/cjkfont/README.zh-CN.md) |
-| [workspace/m21/other/usbmode/](workspace/m21/other/usbmode/README.md) | USB Mode source, kernel modules, `tomato` patch, [NOTES.md](workspace/m21/other/usbmode/NOTES.md) (full work log, Chinese) | Chinese only |
-| [workspace/m21/other/dtb_60fps/](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) | 60 Hz internal panel patch (verified on M22Pro) and FEL recovery | Chinese only |
-| [firmware/sjgam-m22pro/](firmware/sjgam-m22pro/) | Stock SPI NOR dump and [ANALYSIS.md](firmware/sjgam-m22pro/ANALYSIS.md) | Chinese only |
+| [workspace/m21/other/usbmode/](workspace/m21/other/usbmode/README.md) | USB Mode source, kernel modules, `tomato` patch, [NOTES.md](workspace/m21/other/usbmode/NOTES.md) (full work log), [FEATURES_AND_ISSUES.md](workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md) | [README.zh-CN.md](workspace/m21/other/usbmode/README.zh-CN.md), [NOTES.zh-CN.md](workspace/m21/other/usbmode/NOTES.zh-CN.md) |
+| [workspace/m21/other/dtb_60fps/](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) | 60 Hz internal panel patch (verified on M22Pro) and FEL recovery, [pantrace](workspace/m21/other/dtb_60fps/pantrace/README.md) | [RISK_ASSESSMENT.zh-CN.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.zh-CN.md) |
+| [firmware/sjgam-m22pro/](firmware/sjgam-m22pro/) | Stock SPI NOR dump and [ANALYSIS.md](firmware/sjgam-m22pro/ANALYSIS.md) | [README.zh-CN.md](firmware/sjgam-m22pro/README.zh-CN.md), [ANALYSIS.zh-CN.md](firmware/sjgam-m22pro/ANALYSIS.zh-CN.md) |
 
 Short version of the device: Tina Linux (musl), Linux 5.4.61, 16 MiB SPI NOR with a full read-only rootfs. The stock `guimenu` runs
 `/mnt/SDCARD/tomato` when `/usr/tomato` exists, so MinUI boots from the SD card only. A bad install is fixed by restoring the SD card, the device cannot be bricked by it.

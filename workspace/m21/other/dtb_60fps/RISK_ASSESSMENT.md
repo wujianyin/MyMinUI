@@ -1,170 +1,172 @@
-# M22Pro 内置屏 60fps(设备树补丁)风险评估
+# M22Pro Built-in Display 60 fps (Device-Tree Patch) Risk Assessment
 
-日期:2026-10-20。**本文只做评估,没有向设备写入任何东西。**
-上游的做法见同目录 [Readme.md](Readme.md)(作者 Turro75,只对 M22Pro 有效,对 M21 会变砖)。
+> 中文版: [RISK_ASSESSMENT.zh-CN.md](RISK_ASSESSMENT.zh-CN.md)
 
-## 1. 要解决的问题
+Date: 2026-10-20. **This document is assessment only; nothing has been written to the device.**
+For the upstream approach see [Readme.md](Readme.md) in this directory (author Turro75; valid only for M22Pro; will brick M21).
 
-M22Pro 内置屏(hx8399,1080x1920 MIPI-DSI)在原厂设备树里是 **37.6Hz**(`ref_fps:38`)。后果 [作者 + 代码 `platform.c:1292`]:
-- 内置屏不能开 vsync(开了帧率被拖到 38fps),只能靠双缓冲减轻撕裂,仍会撕裂;
-- 游戏最高只能约 38fps 刷新(60fps 游戏会丢帧显示)。
+## 1. Problem Being Addressed
 
-补丁把 LCD 时序改成 ~59.5Hz。`launch.sh` 通过 `sys` 里是否还有 `fps:38` 判断是否已打补丁并设置 `NEWDTB`,`platform.c` 据此在内置屏也启用 vsync,**不需要改程序**。
+The M22Pro built-in panel (hx8399, 1080×1920 MIPI-DSI) runs at **37.6 Hz** in the factory device tree (`ref_fps:38`). Consequences [author + code `platform.c:1292`]:
+- The built-in display cannot enable vsync (doing so caps refresh at 38 fps); only double buffering mitigates tearing, which still occurs;
+- Games are limited to ~38 fps refresh (60 fps games drop frames on display).
 
-## 2. 我们验证过的事实(离线,基于 `firmware/sjgam-m22pro/images/mtd0_uboot.bin`)
+The patch changes LCD timing to ~59.5 Hz. `launch.sh` checks whether `fps:38` is still present in `sys` to decide if the patch is applied and sets `NEWDTB`; `platform.c` then enables vsync on the built-in panel accordingly—**no application changes required**.
 
-| 事实 | 结论 |
+## 2. Facts We Verified (Offline, Based on `firmware/sjgam-m22pro/images/mtd0_uboot.bin`)
+
+| Fact | Conclusion |
 |---|---|
-| 我们设备 hx8399 DTB 的 `lcd0@5461000` 节点 | 与上游 `orig.dts` **完全一致**(同一版固件),补丁数值可直接用 |
-| 设备树位置 | mtd0 偏移 `0xd6000`,60608 字节;mtd0 里还有一份 st7703s(640x480)DTB 在 `0x862b8`,**不动** |
-| mtd0 布局 | `0x0` boot0 SPL(28KiB,eGON.BT0);`0x10000` `sunxi-package`(u-boot、optee、dtb 三项,有效长度 `0xd8000`) |
-| **package 头部有加法校验和** | 头部 `add_sum=0x8bb7e81c`,我们用算法(求和时该字段按戳值 `0x5F0A6C39` 计)复算**完全一致**,说明校验和覆盖整个包(含 DTB) |
-| 时序计算 | 原厂 90MHz / (1230×1945) = **37.62Hz**;补丁 162MHz / (1350×2016) = **59.52Hz** |
-| DSI 速率(4 lane,RGB888) | 原厂 540Mbit/s/lane → 补丁 **972Mbit/s/lane**(接近翻倍) |
-| 闪存擦除粒度 | 4KiB(`/proc/mtd` erasesize=0x1000) |
+| Our device’s hx8399 DTB `lcd0@5461000` node | **Identical** to upstream `orig.dts` (same firmware build); patch values apply directly |
+| Device-tree location | mtd0 offset `0xd6000`, 60608 bytes; mtd0 also holds a st7703s (640×480) DTB at `0x862b8`, **left unchanged** |
+| mtd0 layout | `0x0` boot0 SPL (28 KiB, eGON.BT0); `0x10000` `sunxi-package` (u-boot, optee, dtb entries; effective length `0xd8000`) |
+| **Package header has additive checksum** | Header `add_sum=0x8bb7e81c`; we recomputed with the algorithm (that field counted as stamp `0x5F0A6C39` during summation) and got an **exact match**, indicating the checksum covers the whole package (including the DTB) |
+| Timing math | Factory 90 MHz / (1230×1945) = **37.62 Hz**; patch 162 MHz / (1350×2016) = **59.52 Hz** |
+| DSI rate (4 lane, RGB888) | Factory 540 Mbit/s/lane → patch **972 Mbit/s/lane** (nearly doubled) |
+| Flash erase granularity | 4 KiB (`/proc/mtd` erasesize=0x1000) |
 
-### 上游 `dd` 做法的问题(我们的判断)
-上游流程是:`dtc` 重新编译整个 DTS(得到 58503 字节,比原来的 60608 小 2105 字节),再 `dd seek=876544 conv=notrunc` 写回去,最后把**整个 1MiB** 的 mtdblock0 重写。这意味着:
-1. DTB 变短,后面留着 2105 字节旧数据;
-2. package 头部校验和**没有更新**(包内容变了,校验和对不上);
-3. 重写了全部 256 个扇区,包括 boot0 和 U-Boot,不必要地扩大了暴露面。
+### Issues With the Upstream `dd` Approach (Our Judgment)
+Upstream flow: recompile the full DTS with `dtc` (58503 bytes, 2105 bytes smaller than the original 60608), `dd seek=876544 conv=notrunc` write-back, then rewrite the **entire 1 MiB** mtdblock0. That implies:
+1. The DTB is shorter; 2105 bytes of old data remain after it;
+2. The package header checksum is **not updated** (package contents changed, checksum no longer matches);
+3. All 256 sectors are rewritten, including boot0 and U-Boot, unnecessarily widening exposure.
 
-它在作者的设备上能启动,说明 boot0/U-Boot **实际上没有强制校验**这个加法校验和 [推断,依据是作者能启动];但没有源码证据,不能当作保证。
+It booted on the author’s device, so boot0/U-Boot **does not actually enforce** this additive checksum [inferred, because the author could boot]; there is no source evidence, so it cannot be treated as a guarantee.
 
-## 3. 我们准备的、更保守的补丁方式
+## 3. Our More Conservative Patch Method
 
-脚本:[`patch_mtd0_60fps.py`](patch_mtd0_60fps.py)(只读转储、只写新文件,**不会刷机**)。
+Script: [`patch_mtd0_60fps.py`](patch_mtd0_60fps.py) (read-only dump, writes new files only, **does not flash**).
 
-- 直接在原 DTB **二进制里原位修改 7 个 4 字节的时序属性**(`lcd_dclk_freq`、`lcd_hbp`、`lcd_ht`、`lcd_hspw`、`lcd_vbp`、`lcd_vt`、`lcd_vspw`),不经过 dtc,DTB 大小和布局完全不变;
-- 在 DTB 后面 0 填充的空隙里写一个**补偿字**,让包校验和保持原值,于是 **package 头部扇区一个字节都不用改**;
-- 离线验证结果:全文件只有 10 个字节不同;**boot0 区(0~0x7000)未改**;校验和复算通过;`--restore` 回写后与原转储**逐字节一致**(往返验证);
-- **只需要重写 2 个 4KiB 扇区**:`0xde000`(时序所在)和 `0xe4000`(补偿字)。上游的方案要重写 256 个。
-- 备选 `--fix-header`:改为更新头部校验和字段,需要多写 `0x10000` 一个扇区(头部扇区断电损坏的后果最严重,所以默认不用)。
+- **In-place patch of seven 4-byte timing properties** in the original DTB binary (`lcd_dclk_freq`, `lcd_hbp`, `lcd_ht`, `lcd_hspw`, `lcd_vbp`, `lcd_vt`, `lcd_vspw`), without `dtc`; DTB size and layout unchanged;
+- Write a **compensation word** in the zero-padded gap after the DTB so the package checksum stays the same; **no byte in the package header sector needs changing**;
+- Offline verification: only 10 bytes differ file-wide; **boot0 region (0–0x7000) unchanged**; checksum recomputation passes; `--restore` round-trip is **byte-identical** to the original dump;
+- **Only two 4 KiB sectors need rewriting**: `0xde000` (timing) and `0xe4000` (compensation word). Upstream rewrites 256 sectors.
+- Optional `--fix-header`: update the header checksum field instead; requires one extra sector at `0x10000` (power loss while writing the header sector is the worst case, so not the default).
 
-## 4. 风险清单
+## 4. Risk Register
 
-| # | 风险 | 后果 | 可能性/说明 | 缓解 |
+| # | Risk | Impact | Likelihood / notes | Mitigation |
 |---|---|---|---|---|
-| 1 | 写闪存过程中断电/死机 | DTB 扇区损坏 → U-Boot 无法正常启动,**设备可能起不来** | 窗口很短(两个 4KiB 扇区);上游方案要写整块 1MiB,窗口大得多 | 满电 + 接电源;只写 2 个扇区;写后回读比对;写之前确认备份 |
-| 2 | 面板不接受 972Mbit/s 的 DSI 速率,或时序超出面板范围 | 开机后**黑屏/花屏**(系统可能仍能启动) | **未核实** hx8399 的最大 lane 速率;上游作者在他的 M22Pro 上点亮并测到 60.2Hz,但只有这一个样本,面板批次可能不同 | 屏黑时靠 **adb 恢复**(见 §5);备份保留 |
-| 3 | 刷新率升高后显示引擎欠载/错误增多 | 偶发花屏、撕裂、卡顿 | 上游的 `sys` 输出里 `err:277`(60Hz 样本)对比我们设备原厂的 `err:83`,运行时间不同不能直接比,**需要实测** | 刷后观察 `cat /sys/class/disp/disp/attr/sys` 的 `err`/`skip` 增长速率 |
-| 4 | 功耗/发热变化 | 电池续航下降 | 像素时钟翻倍,面板与 DSI 功耗会上升;**没有数据** | 刷后观察电量下降速度 |
-| 5 | 补偿字写在包内空隙,若 boot0/U-Boot 对该区域有别的用途 | 理论上可能影响启动 | 该区域是 0 填充,位于 DTB 之后、dtb 条目长度之外 [推断];上游方案同样改动了 DTB 之后的区域 | 可改用 `--fix-header` 方案(需写头部扇区) |
-| 6 | 误刷到 M21 | **变砖** | 上游明确警告 | 脚本只改含 `hx8399` 的 DTB,找不到就退出;设备确认是 hx8399(`lcd_driver_name`) |
-| 7 | 刷机后无法恢复 | 需要硬件手段 | boot0/U-Boot 无法启动时,Allwinner BROM 一般会进入 **FEL(USB 刷机)模式** [推断,**本设备未验证**,也不知道有没有进入 FEL 的物理方式] | 在设备上确认能否进入 FEL 之前,把"无法启动"当作不可恢复来对待 |
+| 1 | Power loss / crash while writing flash | Corrupted DTB sector → U-Boot may not boot normally; **device may not start** | Short window (two 4 KiB sectors); upstream writes the full 1 MiB, much larger window | Full battery + charger; write only 2 sectors; read back and compare after write; confirm backup before writing |
+| 2 | Panel rejects 972 Mbit/s DSI rate or timing out of spec | **Black / garbled screen** after boot (system may still boot) | **Not verified** hx8399 max lane rate; upstream author lit panel and measured 60.2 Hz on his M22Pro, but only one sample; panel batches may differ | If screen fails, **adb recovery** (see §5); keep backup |
+| 3 | Display engine underrun / errors at higher refresh | Occasional artifacts, tearing, stutter | Upstream `sys` showed `err:277` (60 Hz sample) vs our factory `err:83`; runtimes differ, **needs measurement** | After flash, watch `err`/`skip` growth in `cat /sys/class/disp/disp/attr/sys` |
+| 4 | Power / thermals | Shorter battery life | Pixel clock doubled; panel and DSI power rise; **no data** | Observe drain rate after flash |
+| 5 | Compensation word in package gap if boot0/U-Boot uses that region | Could affect boot in theory | Region is zero-filled, after DTB, outside dtb entry length [inferred]; upstream also changed post-DTB area | Can use `--fix-header` (writes header sector) |
+| 6 | Flashing M21 by mistake | **Brick** | Upstream warns explicitly | Script only patches DTB containing `hx8399`; exits if not found; confirm hx8399 on device (`lcd_driver_name`) |
+| 7 | No recovery after flash | Hardware recovery needed | If boot0/U-Boot cannot start, Allwinner BROM usually enters **FEL (USB flash) mode** [inferred, **not verified on this device**; physical FEL entry unknown] | Until FEL entry is confirmed on device, treat “won’t boot” as non-recoverable |
 
-## 5. 恢复路径
+## 5. Recovery Paths
 
-1. **能启动但屏幕异常**(风险 2、3):系统仍会运行,`tomato` 启动 adbd,**adb 应该仍能连接**。用恢复镜像把 `0xde000` 和 `0xe4000` 两个扇区写回原值(`--restore` 产物与原转储逐字节一致),重启。
-2. **不能启动**(风险 1、5):只能靠 FEL 或编程器。没有验证,**不要依赖**。
-3. 原厂转储备份:`firmware/sjgam-m22pro/images/`(带 `SHA256SUMS`)和 Desktop 备份。
+1. **Boots but display abnormal** (risks 2, 3): System still runs; `tomato` starts adbd; **adb should still connect**. Restore original bytes to sectors `0xde000` and `0xe4000` with the recovery image (`--restore` output is byte-identical to original dump); reboot.
+2. **Won’t boot** (risks 1, 5): FEL or programmer only. Unverified—**do not rely on it**.
+3. Factory dump backup: `firmware/sjgam-m22pro/images/` (with `SHA256SUMS`) and Desktop backup.
 
-## 6. 刷机前必须做的检查(如果决定做)
+## 6. Pre-Flash Checks (If You Proceed)
 
-1. 读设备当前的 `/dev/mtdblock0`,与 `mtd0_uboot.bin` 做 SHA256 对比,**必须一致**(证明备份就是当前闪存内容)。
-2. 确认设备树里的屏幕是 hx8399(`cat /proc/device-tree/soc@3000000/lcd0@5461000/lcd_driver_name`)。
-3. 电量 > 50% 并接上电源;adb 稳定。
-4. 先生成补丁镜像并检查脚本输出("package checksum verified"、"header sector changed: False"、"boot0 area changed: False")。
-5. 只写 `0xde000` 与 `0xe4000` 两个扇区,写完立即回读并 `cmp`;不要 `dd` 整个 1MiB。
-6. 把恢复用的两个扇区备份(原值)拷到 SD 卡和电脑上,确认 adb 重新连接后再重启。
-7. 重启后:`cat /sys/class/disp/disp/attr/sys` 应显示 `ref_fps:60`;`launch.sh` 会设置 `NEWDTB=1`。
+1. Read current `/dev/mtdblock0` on device; SHA256 **must match** `mtd0_uboot.bin` (proves backup matches live flash).
+2. Confirm hx8399 in device tree (`cat /proc/device-tree/soc@3000000/lcd0@5461000/lcd_driver_name`).
+3. Charge > 50% and plug in power; stable adb.
+4. Generate patch image first; check script output (“package checksum verified”, “header sector changed: False”, “boot0 area changed: False”).
+5. Write only sectors `0xde000` and `0xe4000`; read back and `cmp` immediately; do not `dd` the full 1 MiB.
+6. Copy restore sectors (original values) to SD card and PC; reboot only after adb reconnects.
+7. After reboot: `cat /sys/class/disp/disp/attr/sys` should show `ref_fps:60`; `launch.sh` sets `NEWDTB=1`.
 
-## 7. 评估结论(供决策)
+## 7. Assessment Conclusion (For Decision-Making)
 
-- **收益**:内置屏 38Hz → ~60Hz,可以开 vsync、消除大部分撕裂,60fps 游戏能满帧显示。无需改程序。
-- **相对上游方案的改进**:原位改 7 个字、写 2 个扇区、头部和 boot0 不动、可往返恢复;已离线验证。
-- **仍然存在的风险**:(1)写闪存本身的断电风险;(2)面板是否接受 972Mbit/s(无数据,只有作者一台设备的成功样本);(3)刷坏后没有已验证的硬件恢复手段。
-- **没有任何已知的、不刷闪存就能试的办法**:`sunxi` 显示驱动的 LCD 时序来自设备树,我们没有发现运行时调节途径 [推断,设备未连接,尚未在 `/sys/class/disp/` 下核对]。
-- 建议:**先在设备上做 §6 的第 1~2 项只读检查**,并确认能否进入 FEL 模式后,再决定是否刷。
+- **Benefit**: Built-in panel 38 Hz → ~60 Hz; vsync possible, most tearing gone, 60 fps games can display at full rate. No app changes.
+- **Improvements vs upstream**: In-place 7-field patch, 2 sectors written, header and boot0 untouched, round-trip restore; verified offline.
+- **Remaining risks**: (1) power-loss while writing flash; (2) whether panel accepts 972 Mbit/s (no data, one author success); (3) no verified hardware recovery if flash is bad.
+- **No known way to try without flashing flash**: Sunxi display driver LCD timing comes from device tree; we found no runtime tuning path [inferred, device was disconnected, not yet checked under `/sys/class/disp/`].
+- Recommendation: **Run read-only checks §6 items 1–2 on device** and confirm FEL entry before deciding to flash.
 
 
-## 补充 1:上游发布包不含刷写工具(2026-10-20 核实)
+## Addendum 1: Upstream Releases Include No Flash Tools (Verified 2026-10-20)
 
-下载并检查了 m21 发布包 `20260118b-0`、`20260126b-0`、`20260208b-0`,以及仓库全部 git 历史:
+Downloaded and inspected m21 release packages `20260118b-0`, `20260126b-0`, `20260208b-0`, and full git history:
 
-- 包内没有任何 dtb/mtd/flash 相关文件或脚本,`tomato`/`emulationstation` 里只有一行注释掉的 `#export NEWDTB=0`。
-- 上游只有两样东西:`dtb_60fps/Readme.md` 的**手动步骤**,以及提交 `1ec9f1b` 的**检测逻辑**(`launch.sh` 读 `/sys/class/disp/disp/attr/sys`,没有 `fps:38` 则设 `NEWDTB=1`)。
-- Readme 里的 "modified tomato script ... can work even as a tool" 是作者自用的改版,没有随包发布。
+- No dtb/mtd/flash files or scripts in packages; `tomato`/`emulationstation` only have commented `#export NEWDTB=0`.
+- Upstream provides only: **manual steps** in `dtb_60fps/Readme.md`, and **detection logic** in commit `1ec9f1b` (`launch.sh` reads `/sys/class/disp/disp/attr/sys`, sets `NEWDTB=1` when `fps:38` absent).
+- Readme line “modified tomato script ... can work even as a tool” is the author’s private build, not shipped.
 
-所以刷 SPI Flash 没有现成、经过验证的工具,只能自己做,本目录的 `patch_mtd0_60fps.py` 就是这个用途。
+So there is no ready-made, validated SPI flash tool; you must build your own—`patch_mtd0_60fps.py` in this directory is for that.
 
-## 补充 2:设备只读核对结果(2026-10-20,未写入任何内容)
+## Addendum 2: Device Read-Only Verification (2026-10-20, No Writes)
 
-| 项目 | 结果 |
+| Item | Result |
 |---|---|
-| `/dev/mtdblock0` SHA256 | `852d4d22…c90aa7`,与 `firmware/sjgam-m22pro/images/mtd0_uboot.bin` **完全一致** |
-| 分区 | mtd0 `uboot` 1 MiB、擦除块 4 KiB;mtd1 env 128 KiB;mtd2 boot 4 MiB;mtd4 rootfs |
-| 屏驱动 | dmesg:`hx8399 lcd_panel_init is ok`,确认是 hx8399 |
-| 当前帧率 | `ref_fps:38`,实测 `fps:37.8`,DE 时钟 300 MHz,`err:53` |
-| 运行中设备树 `lcd0@5461000` | dclk=0x5a(**90 MHz**)、ht=1230、vt=1945、1080x1920、4 lane、hbp=32、hspw=8、vbp=7、vspw=6;与 flash 里的 DTB 及补丁脚本的假设一致 |
-| 运行时调时序接口 | `/sys/class/disp/disp/attr/` 只有 `sys xres yres colorbar enhance_* runtime_enable ...`,**没有改 LCD 时序的接口**,`runtime_enable=0`。只能改 flash 里的 DTB,无法先在运行时试验 |
+| `/dev/mtdblock0` SHA256 | `852d4d22…c90aa7`, **identical** to `firmware/sjgam-m22pro/images/mtd0_uboot.bin` |
+| Partitions | mtd0 `uboot` 1 MiB, erase 4 KiB; mtd1 env 128 KiB; mtd2 boot 4 MiB; mtd4 rootfs |
+| Panel driver | dmesg: `hx8399 lcd_panel_init is ok`, hx8399 confirmed |
+| Current refresh | `ref_fps:38`, measured `fps:37.8`, DE clock 300 MHz, `err:53` |
+| Runtime DT `lcd0@5461000` | dclk=0x5a (**90 MHz**), ht=1230, vt=1945, 1080×1920, 4 lane, hbp=32, hspw=8, vbp=7, vspw=6; matches flash DTB and patch script assumptions |
+| Runtime timing API | `/sys/class/disp/disp/attr/` has `sys xres yres colorbar enhance_* runtime_enable ...`, **no LCD timing knobs**, `runtime_enable=0`. Must change DTB in flash; cannot trial at runtime |
 
-结论:补丁脚本的前提(型号、原始数据、时序)已在真机上全部核实。**唯一没核实的是 FEL 救砖能否进入**,以及 hx8399 能否承受 972 Mbit/s 的 lane 速率;这两项只有刷了才知道,所以仍不建议在没有 FEL 手段前写入。
-
-
-## 补充 3:FEL 实测(2026-10-20,未写 Flash)
-
-- 设备的 `/sbin/reboot` 支持 `efex`:`adb shell reboot efex`(会提示 `can not access .../rtc/flag`,可忽略)后设备进入 FEL,Mac 上 `sunxi-fel version` 返回 `AWUSBFEX soc=00001859(R528)`。**设备能进 FEL,Mac 能通信。**
-- 设备电源是**拨动开关**(没有电源键):拨到关再拨到开即可冷启动并恢复,实测恢复正常(MyMinUI-20260208b-0,`ref_fps:38`,adb 正常)。
-- `sunxi-tools` 不在 brew 里,需自行编译:`brew install dtc pkgconf`,`git clone https://github.com/linux-sunxi/sunxi-tools`,`make sunxi-fel`。
-- 这个版本的 `sunxi-fel` **没有实现 R528 的 SPI 支持**(`spiflash-info`/`spiflash-read` 报 `SPI support not implemented yet for 1859 (R528)`),所以不能直接通过 FEL 读写 SPI NOR。真要救砖,需要先通过 FEL 上传自制的 SPI 读写小程序,**尚未实现、尚未验证**。
-- 仍未验证:Flash 内容损坏后,上电能否**自动**进入 FEL;没有电源键,无法"按键上电进 FEL",手动进入需要短接 SPI NOR 引脚或用 TF 卡启动,两者都未调查。
-- 结论:FEL 通道可用,但"刷坏了一定能救回来"这件事**仍没有保障**。不建议在做出可用的 FEL 救砖流程前写 Flash。
+Conclusion: Patch script premises (model, raw data, timing) verified on hardware. **Still unverified**: FEL recovery entry, and whether hx8399 tolerates 972 Mbit/s lane rate—only flashing will tell; still advise against writing without a FEL path.
 
 
-## 补充 4:通过 FEL 读 SPI NOR 已跑通(2026-10-20,只读)
+## Addendum 3: FEL Measured (2026-10-20, No Flash Write)
 
-- 给 `sunxi-tools`(基线提交 `4ab7b32`)的 `fel-spiflash.c` 打补丁,加上 R528/D1/T113(`0x1859`)的 SPI0 支持:SPI0 基址 `0x04025000`、CCU `0x02001000`、GPIO `0x02000000`(端口步长 0x30)、引脚 PC2~PC7 功能 2,并把引脚复用的掩码从 3 位改成 4 位(BROM 把 PC 脚留在 `0xf`,3 位掩码会写出非法的 `0xa`)。补丁见 [sunxi-fel-r528-spi.patch](sunxi-fel-r528-spi.patch),用法:`git apply` 后 `make sunxi-fel`。
-- 实测 `sunxi-fel spiflash-info`:Manufacturer `85h`(Puya),model `20h`,**容量 16 MiB**。`mtd0` 的 1 MiB 只是整颗 SPI NOR 的第一个分区。
-- `sunxi-fel spiflash-read 0 0x1000000 <out>` 读出整颗 16 MiB,与仓库 `firmware/sjgam-m22pro/images/` 里 5 个分区镜像(uboot/env/boot/boot-resource/rootfs)**逐字节一致**,尾部全是 `0xff`。完整备份保存在 `~/Desktop/mtd_dump/spi_full_16M_fel.bin`,SHA256 `76aa79b7…ec42a`。
-- 所以:**设备在 Linux 起不来时,只要能进 FEL,就能把整颗 SPI NOR 读出/比对。写入路径(`spiflash-write`,擦除+页编程)尚未测试**,Puya 不在工具的已知芯片表里,会按默认的 4 KiB 擦除 `0x20` 和 256 字节页编程 `0x02` 处理,需要先在一个无关紧要的区域(如文件尾部 `0xff` 区)做写入/回读验证后才能信赖。
-
-
-## 补充 5:FEL 写入路径实测(2026-10-20)
-
-- 测试区域:SPI 偏移 `0xfb0000` 起,位于 rootfs 分区之后的空白尾部(文件系统在 `0xfa7800` 结束,之后全是 `0xff`),不影响任何系统内容。
-- `sunxi-fel spiflash-write 0xfb0000 <8 KiB 随机数据>` 后回读,**逐字节一致**:擦除(4 KiB,`0x20`)+页编程(256 B,`0x02`)在 Puya 芯片上可用,没有写保护。
-- 恢复过程中出过一次失误:用 `tr` 生成"全 0xff"文件时,因为终端区域设置得到了 UTF-8 的 `c3 bf` 序列,导致 `0xfb0000` 起 16 KiB 被写成了 `c3bf`。随后用 Python 生成真正的 16 KiB `0xff` 写回,再读出整颗 16 MiB,**与刷前的完整备份 SHA256 完全一致(`76aa79b7…ec42a`)**,即已原样恢复。教训:生成测试数据一律用 Python 或 `xxd`,并写后立刻整片回读比对。
-- 结论:**设备进 FEL 后,可以用 `sunxi-fel` 读出、写入、校验整颗 SPI NOR**。因此只要能进 FEL(目前只验证了 Linux 活着时 `reboot efex` 进入),刷坏的设备就有了可用的恢复手段:`spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin`。
-- 仍未验证:Flash 内容损坏、Linux 起不来时,设备能否自动/手动进入 FEL。这是现在唯一剩下的缺口。
+- Device `/sbin/reboot` supports `efex`: `adb shell reboot efex` (ignore `can not access .../rtc/flag`) enters FEL; on Mac `sunxi-fel version` returns `AWUSBFEX soc=00001859(R528)`. **FEL works; Mac can talk to device.**
+- Power is a **slide switch** (no power button): off then on for cold boot recovery; tested OK (MyMinUI-20260208b-0, `ref_fps:38`, adb OK).
+- `sunxi-tools` not in brew; build: `brew install dtc pkgconf`, `git clone https://github.com/linux-sunxi/sunxi-tools`, `make sunxi-fel`.
+- This `sunxi-fel` **has no R528 SPI support** (`spiflash-info`/`spiflash-read`: `SPI support not implemented yet for 1859 (R528)`), so SPI NOR read/write over FEL is not direct. Real brick recovery would need uploading a custom SPI helper via FEL—**not implemented or verified**.
+- Still unverified: After corrupt flash, does power-on **automatically** enter FEL; no power button for “hold while power on”; manual entry may need SPI NOR pin strap or TF boot—both uninvestigated.
+- Conclusion: FEL channel works, but “bricked flash is always recoverable” is **still not guaranteed**. Do not write flash until a usable FEL recovery flow exists.
 
 
-## 补充 6:已刷入并验证(2026-10-20)
+## Addendum 4: SPI NOR Read via FEL Working (2026-10-20, Read-Only)
 
-- 方法:`patch_mtd0_60fps.py` 生成补丁镜像(只改 10 字节,落在 `0xde000`、`0xe4000` 两个 4 KiB 扇区),设备 `reboot efex` 进 FEL 后用打了 R528 补丁的 `sunxi-fel spiflash-write` **只写这两个扇区**,再读回整颗 16 MiB 校验:前 1 MiB 与补丁镜像一致,其余 15 MiB 与刷前完整备份一致。补丁镜像存于 `~/Desktop/mtd_dump/mtd0_60hz_patched.bin`。
-- 结果:拨动开关重启后**正常开机**,adb 正常,`ref_fps:60`,实测 `fps:60.2`,`mgr0: 1080x1920`;dmesg 里 `hx8399 lcd_panel_init is ok`;运行中设备树 `lcd_dclk_freq=0xa2`(162 MHz)、`lcd_ht=0x546`、`lcd_vt=0x7e0`。
-- DE 的 `err` 计数在开机后稳定在 81,15 秒内不再增长;SoC 温度约 37.6 ℃(空闲)。
-- `/sys/class/disp/disp/attr/sys` 里不再有 `fps:38`,`launch.sh` 下次启动会设 `NEWDTB=1`,`platform.c` 随之对内屏启用 vsync。
-- 恢复方法(如需回退):`reboot efex` 进 FEL,`sunxi-fel spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin`(整片),或只写 `0xde000`/`0xe4000` 两个扇区的原始内容;万一连 FEL 都进不去,用 CH341 编程器写入同一份备份。
-- 待观察:长时间运行的发热、耗电、有无闪屏;游戏内 vsync 的实际效果(撕裂是否消失、`minarch_prevent_tearing` 等选项是否需要调整)。
+- Patched `sunxi-tools` (baseline `4ab7b32`) `fel-spiflash.c` for R528/D1/T113 (`0x1859`) SPI0: base `0x04025000`, CCU `0x02001000`, GPIO `0x02000000` (port stride 0x30), pins PC2–PC7 function 2; pin mux mask 4 bits not 3 (BROM leaves PC at `0xf`, 3-bit mask wrote invalid `0xa`). Patch: [sunxi-fel-r528-spi.patch](sunxi-fel-r528-spi.patch); `git apply` then `make sunxi-fel`.
+- Measured `sunxi-fel spiflash-info`: Manufacturer `85h` (Puya), model `20h`, **16 MiB capacity**. mtd0’s 1 MiB is only the first partition of the whole SPI NOR.
+- `sunxi-fel spiflash-read 0 0x1000000 <out>` read full 16 MiB; **byte-identical** to five partition images in repo `firmware/sjgam-m22pro/images/` (uboot/env/boot/boot-resource/rootfs); tail all `0xff`. Full backup `~/Desktop/mtd_dump/spi_full_16M_fel.bin`, SHA256 `76aa79b7…ec42a`.
+- So: **If Linux won’t boot but FEL is reachable, entire SPI NOR can be read/compared.** Write path (`spiflash-write`, erase + page program) **not tested**; Puya not in tool’s chip table—defaults to 4 KiB erase `0x20` and 256 B page program `0x02`; validate on a harmless region (e.g. file tail `0xff` area) before trusting.
 
 
-## 补充 7:60Hz 后的帧提交节奏实测(2026-10-20)
+## Addendum 5: FEL Write Path Measured (2026-10-20)
 
-工具:[pantrace](pantrace/README.md)(被动记录 `minarch.elf` 的显示 ioctl 时间)。游戏:GBA《龙珠大冒险》,连续滚动,约 100~120 秒/次,**每组只测了一次**。原始输出见 [measurements/](measurements/)。
+- Test region: SPI offset `0xfb0000`, blank tail after rootfs (filesystem ends `0xfa7800`, then `0xff`); no system data affected.
+- After `sunxi-fel spiflash-write 0xfb0000 <8 KiB random>`, readback **byte-identical**: erase (4 KiB, `0x20`) + page program (256 B, `0x02`) works on Puya; no write protection.
+- One mistake during restore: `tr` for “all 0xff” produced UTF-8 `c3 bf`, writing `c3bf` from `0xfb0000` for 16 KiB. Fixed with Python-generated 16 KiB `0xff`, full 16 MiB readback **SHA256 identical to pre-flash backup (`76aa79b7…ec42a`)**—fully restored. Lesson: generate test data with Python or `xxd`; always full-chip readback compare after writes.
+- Conclusion: **In FEL, `sunxi-fel` can read, write, and verify the whole SPI NOR.** With FEL entry (so far only verified via `reboot efex` while Linux runs), bricked devices have a recovery path: `spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin`.
+- Still unverified: When flash is corrupt and Linux won’t boot, automatic/manual FEL entry. That is the remaining gap.
 
-| | A:Prevent Tearing=Off,Core Sync=Core | B:Prevent Tearing=Lenient,Core Sync=Auto |
+
+## Addendum 6: Flashed and Verified (2026-10-20)
+
+- Method: `patch_mtd0_60fps.py` patch image (10 bytes changed in sectors `0xde000`, `0xe4000`); device `reboot efex` to FEL; R528-patched `sunxi-fel spiflash-write` **only those two sectors**; full 16 MiB readback: first 1 MiB matches patch image, remaining 15 MiB matches pre-flash backup. Patch image at `~/Desktop/mtd_dump/mtd0_60hz_patched.bin`.
+- Result: Slide-switch reboot **normal boot**, adb OK, `ref_fps:60`, measured `fps:60.2`, `mgr0: 1080x1920`; dmesg `hx8399 lcd_panel_init is ok`; runtime DT `lcd_dclk_freq=0xa2` (162 MHz), `lcd_ht=0x546`, `lcd_vt=0x7e0`.
+- DE `err` count stable at 81 after boot, no growth in 15 s; SoC ~37.6 °C idle.
+- `/sys/class/disp/disp/attr/sys` no longer has `fps:38`; next `launch.sh` boot sets `NEWDTB=1`; `platform.c` enables vsync on internal panel.
+- Rollback: `reboot efex`, `sunxi-fel spiflash-write 0 ~/Desktop/mtd_dump/spi_full_16M_fel.bin` (full chip), or only original `0xde000`/`0xe4000`; if FEL unreachable, CH341 programmer with same backup.
+- To watch: long-run heat, battery, flicker; in-game vsync effect (tearing gone?, `minarch_prevent_tearing` tuning).
+
+
+## Addendum 7: Frame Submit Timing at 60 Hz (2026-10-20)
+
+Tool: [pantrace](pantrace/README.md) (passive timing of `minarch.elf` display ioctls). Game: GBA *Dragon Ball Advanced Adventure*, continuous scroll, ~100–120 s per run, **one run per configuration**. Raw output: [measurements/](measurements/).
+
+| | A: Prevent Tearing=Off, Core Sync=Core | B: Prevent Tearing=Lenient, Core Sync=Auto |
 |---|---|---|
-| 提交间隔 p50 | **16.80 ms**(59.5 Hz) | **16.80 ms**(59.5 Hz) |
+| Submit interval p50 | **16.80 ms** (59.5 Hz) | **16.80 ms** (59.5 Hz) |
 | p95 | 17.22 ms | 17.22 ms |
 | p99 | 22.4 ms | **18.3 ms** |
-| 间隔 >20 ms 的次数 | 76(1.3%) | **48(0.7%)** |
-| 间隔 <12 ms(追赶式连发)的次数 | 12 | **4** |
-| `FBIOPAN_DISPLAY` 平均耗时 | 6.06 ms | 6.05 ms |
-| `>30 ms` 次数(菜单/暂停造成) | 7 | 7 |
+| Intervals >20 ms | 76 (1.3%) | **48 (0.7%)** |
+| Intervals <12 ms (catch-up bursts) | 12 | **4** |
+| `FBIOPAN_DISPLAY` avg duration | 6.06 ms | 6.05 ms |
+| `>30 ms` count (menu/pause) | 7 | 7 |
 
-结论(只写数据能支撑的部分):
+Conclusions (data-supported only):
 
-1. **两种配置下提交节奏都锁在 16.80 ms(59.5 Hz),即屏幕的新刷新率**,与我们算出的 59.52 Hz 吻合。`FBIOPAN_DISPLAY` 每帧阻塞约 6 ms 等 vblank。
-2. **M22Pro 竖屏走旋转分支,`PLAT_flip` 在该分支里无条件调用 `pan_display`**(`sync && isnewdtb` 只用于不旋转的分支),所以 vsync 等待并不依赖 Prevent Tearing,也不依赖 `NEWDTB`。这解释了为什么只改这个开关感觉不出大差别。
-3. 之前 38 Hz 的屏幕上,因为每帧都要等 vblank,**最多只能每秒提交 38 帧**,而 GBA 核心每秒产出约 59.7 帧,必然丢帧。现在每秒能提交约 59.5 帧。这条是机制推导,**没有 38 Hz 时代的 pantrace 数据做对比**(工具当时还没有)。
-4. 在 60Hz 下,B(Lenient+Auto)比 A 略好:>20 ms 的次数 1.3%→0.7%,连发次数 12→4。差异方向一致,但**每组只有一次、约 100 秒、含菜单暂停,不能当作统计显著**。
-5. **撕裂本身没有测到**,这套工具只能反映提交节奏。要看撕裂需要高速摄像(如手机 240 fps 慢动作拍 `0testtearing.p8`)。
+1. **Both configs lock submit cadence at 16.80 ms (59.5 Hz), the new panel refresh**, matching calculated 59.52 Hz. `FBIOPAN_DISPLAY` blocks ~6 ms per frame waiting for vblank.
+2. **M22Pro portrait uses the rotation path; `PLAT_flip` always calls `pan_display` there** (`sync && isnewdtb` applies only on the non-rotated path), so vsync wait does not depend on Prevent Tearing or `NEWDTB`. Explains why toggling that setting feels similar.
+3. On the old 38 Hz panel, waiting for vblank each frame **capped submits at ~38/s** while GBA core outputs ~59.7/s, so frames were dropped. Now ~59.5 submits/s. Mechanism inference—**no pantrace from 38 Hz era** (tool did not exist).
+4. At 60 Hz, B (Lenient+Auto) slightly better than A: >20 ms 1.3%→0.7%, bursts 12→4. Direction consistent but **one ~100 s run per group with menu pauses—not statistically significant**.
+5. **Tearing not measured**; tool shows submit timing only. Tearing needs high-speed video (e.g. phone 240 fps on `0testtearing.p8`).
 
 
-## 补充 8:发现并修复 system.cfg 默认值写错(2026-10-20)
+## Addendum 8: Fixed Wrong system.cfg Default (2026-10-20)
 
-- `minarch` 的选项值按 `strcmp` **区分大小写**匹配,匹配不上就回落到第 0 项。`skeleton/SYSTEM/m21/system.cfg` 里原来写的是 `minarch_prevent_tearing = lenient`(小写),而合法值是 `Off/Lenient/Strict`,所以出厂默认**实际是 `Off`**(日志里也能看到 `SET Prevent Tearing TO Off`)。
-- 已改成 `Lenient`(仓库 `skeleton/SYSTEM/m21/system.cfg`,设备上的 `/mnt/SDCARD/.system/m21/system.cfg` 也已同步,原文件备份在 `~/Desktop/mtd_dump/system.cfg.orig`)。
-- 设备上 `GBA-gpsp`、`FC-fceumm`、`P8-fake08` 已保存的 `minarch.cfg` 会覆盖系统默认,已全部改为 `Prevent Tearing=Lenient`、`Core Sync=Auto`(原文件备份在 `~/Desktop/mtd_dump/*_minarch.cfg.orig`)。以后新玩的核心会直接用新默认值。
-- 跟踪工具 `pantrace` 已从设备卸载(`/overlay/etc/ld.so.preload` 和 `/overlay/lib/pantrace.so` 已删除)。
+- `minarch` option values match via **case-sensitive** `strcmp`; mismatch falls back to index 0. `skeleton/SYSTEM/m21/system.cfg` had `minarch_prevent_tearing = lenient` (lowercase) but valid values are `Off/Lenient/Strict`, so factory default was **`Off`** (logs show `SET Prevent Tearing TO Off`).
+- Changed to `Lenient` (repo `skeleton/SYSTEM/m21/system.cfg`; device `/mnt/SDCARD/.system/m21/system.cfg` synced; backup `~/Desktop/mtd_dump/system.cfg.orig`).
+- Saved `minarch.cfg` on device for `GBA-gpsp`, `FC-fceumm`, `P8-fake08` override system defaults; all set to `Prevent Tearing=Lenient`, `Core Sync=Auto` (backups `~/Desktop/mtd_dump/*_minarch.cfg.orig`). New cores get new defaults.
+- Tracking tool `pantrace` removed from device (`/overlay/etc/ld.so.preload` and `/overlay/lib/pantrace.so` deleted).

@@ -114,7 +114,7 @@
 ### 4.2 显示与撕裂
 - M22Pro 内置屏原厂设备树把刷新率设成 **38fps**;M21 约 50fps。vsync 一旦打开帧率就被拖到这个数值,所以**内置屏上 vsync 被强制关闭** [作者],只靠双缓冲减轻撕裂,**仍可能看到撕裂**。
 - 我们设备 [实测]:`ref_fps:38`,说明用的是原厂设备树,没有改过。
-- 作者记录了修改设备树达到 60fps 的方法(`workspace/m21/other/dtb_60fps/Readme.md`):提取 `mtdblock0`、改 `lcd0` 节点的时序、重新编译,再用 `dd` 写回 `/dev/mtdblock0`。**只对 M22Pro 有效,M21 刷了会变砖**;刷 SPI NOR 本身有变砖风险。启动脚本通过 `fps:38` 判断是否已打过补丁(`NEWDTB` 环境变量)。**发布包不含刷写工具**(已核对 20260118/0126/0208 三个 m21 包和 git 历史),只有这份手动步骤和上述检测逻辑;作者 Readme 里提到的 "modified tomato script" 是自用,未发布。2026-10-20 已在设备上只读核对:`mtdblock0` 与仓库镜像 SHA256 一致、屏幕为 hx8399、运行中设备树时序与补丁假设一致,详见 [RISK_ASSESSMENT.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) 补充章节。FEL 实测:`reboot efex` 可进入,`sunxi-fel version` 识别为 R528;原版 `sunxi-fel` 不支持 R528 的 SPI,我们打补丁后(`sunxi-fel-r528-spi.patch`)已能读写整颗 16 MiB SPI NOR。**2026-10-20 已在本机刷入 60Hz 补丁并验证:`ref_fps:60`、`fps:60.2`、正常开机**,详见 RISK_ASSESSMENT.md 补充 6。
+- 作者记录了修改设备树达到 60fps 的方法(`workspace/m21/other/dtb_60fps/Readme.md`):提取 `mtdblock0`、改 `lcd0` 节点的时序、重新编译,再用 `dd` 写回 `/dev/mtdblock0`。**只对 M22Pro 有效,M21 刷了会变砖**;刷 SPI NOR 本身有变砖风险。启动脚本通过 `fps:38` 判断是否已打过补丁(`NEWDTB` 环境变量)。**发布包不含刷写工具**(已核对 20260118/0126/0208 三个 m21 包和 git 历史),只有这份手动步骤和上述检测逻辑;作者 Readme 里提到的 "modified tomato script" 是自用,未发布。2026-10-20 已在设备上只读核对:`mtdblock0` 与仓库镜像 SHA256 一致、屏幕为 hx8399、运行中设备树时序与补丁假设一致,详见 [RISK_ASSESSMENT.zh-CN.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.zh-CN.md) 补充章节。FEL 实测:`reboot efex` 可进入,`sunxi-fel version` 识别为 R528;原版 `sunxi-fel` 不支持 R528 的 SPI,我们打补丁后(`sunxi-fel-r528-spi.patch`)已能读写整颗 16 MiB SPI NOR。**2026-10-20 已在本机刷入 60Hz 补丁并验证:`ref_fps:60`、`fps:60.2`、正常开机**,详见 RISK_ASSESSMENT.zh-CN.md 补充 6。
 - issue #80(M22Pro,NES 画面撕裂/声音):作者建议内置屏关掉 tearing 设置,同步参考选 `Core` 或 `NoFix`;用户反馈 `Core` 最好 [作者]。
 - issue #71:动作键按下时闪屏,与作弊码初始化有关,2025-12-23 版修复。
 
@@ -140,7 +140,7 @@
 
 ## 5. 我们设备上已经发现的、与上游无关的问题
 
-这部分是我们自己在做 USB 功能时发现的,详细记录见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md`:
+这部分是我们自己在做 USB 功能时发现的,详细记录见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.zh-CN.md`:
 - USB Mode.pak(存储、ADB、串口、网络、Host、开机默认项)是我们在这个 fork 里加的,上游没有。
 - `curl` 没有任何协议、`wget` 不支持 https:原厂工具限制。
 - ADB 偶发:切换其他 USB 开关后可能失效,需要在 USB Mode 里把 ADB 关了再开(根因未查)。
@@ -155,7 +155,7 @@
 |---|---|---|---|
 | 把 20260208 之后的上游提交(新音频引擎、sharp 缩放、睡眠改进、PR #111–#116)合入并在 M22Pro 上逐项验证 | 高:当前设备版本落后很多,且 m21 一度编不过 | 中:需要验证音频、缩放、睡眠 | §4.1 |
 | 在 M22Pro 上验证并(如需要)修复新缩放器 sharp 模式 | 中:画质提升 | 中:PR #116 是在 LOONG MAY-M21 上测的,不是 M22Pro | §2 |
-| 内置屏 60fps:设备树补丁 | 高:解决撕裂/帧率上限,可开 vsync | **高**:写 SPI NOR,有变砖风险;只适用 M22Pro;已做离线评估和更保守的补丁脚本(只写 2 个扇区),见 [RISK_ASSESSMENT.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) | §4.2 |
+| 内置屏 60fps:设备树补丁 | 高:解决撕裂/帧率上限,可开 vsync | **高**:写 SPI NOR,有变砖风险;只适用 M22Pro;已做离线评估和更保守的补丁脚本(只写 2 个扇区),见 [RISK_ASSESSMENT.zh-CN.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.zh-CN.md) | §4.2 |
 | 外接手柄 2P(#63) | 中 | 中:有旧分支参考,需解决 Select+Start 冲突 | §4.4 |
 | 按键映射界面(目前只能改 env 文件) | 低~中 | 低 | §3.1 |
 | 修复构建链:工具链来源、README 说明、`make m21` 流程 | 中:便于以后复现 | 低 | §4.1 |

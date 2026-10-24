@@ -1,5 +1,7 @@
 # USB Mode.pak (m21 / Allwinner H133, Tina 5.4.61 vendor kernel)
 
+> 中文版: [README.zh-CN.md](README.zh-CN.md)
+
 Items: USB Storage (OFF/RW/RO), ADB, USB Serial (CDC-ACM), USB Network (OFF / +Internet / local) with a
 Network Type selector (ECM = Mac/Linux, NCM = Mac/Linux/Win11, RNDIS = Windows 10/11; RNDIS is placed first in the config and uses MS OS compatible-ID descriptors), USB Host (OTG) sub page,
 Boot Defaults sub page (checkboxes: ADB / Storage / Serial / Network + type); USB Network sub page (mode, type, per-OS "How to connect" help).

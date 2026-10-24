@@ -1,11 +1,13 @@
-# pantrace:帧提交节奏的被动计时工具
+# pantrace: Passive Frame-Submit Timing Tool
 
-`LD_PRELOAD` 式的小共享库,只在 `minarch.elf` 里生效,记录显示相关 ioctl(`req < 0x200` 的 `/dev/disp` 调用和 `0x46xx` 的 fb 调用)的起止时间,统计调用间隔(均值/标准差/p50/p95/p99/最大值/超过 20 ms、30 ms 的次数/小于 12 ms 的次数)和调用耗时,写到
-`/mnt/SDCARD/.userdata/m21/logs/pantrace_<unix时间>.txt`。每次游戏退出(或每 8192 条记录)写一次,每次统计忽略前 3 秒。不改变任何行为。
+> 中文版: [README.zh-CN.md](README.zh-CN.md)
 
-主要请求号:`0x47` = `DISP_LAYER_SET_CONFIG`(提交图层缓冲),`0x4606` = `FBIOPAN_DISPLAY`(会阻塞到下一个 vblank)。
+Small `LD_PRELOAD` shared library active only in `minarch.elf`. Records start/end times for display-related ioctls ( `/dev/disp` calls with `req < 0x200` and fb calls `0x46xx`), computes inter-call statistics (mean, stddev, p50, p95, p99, max, counts over 20 ms and 30 ms, under 12 ms) and call duration, writes to
+`/mnt/SDCARD/.userdata/m21/logs/pantrace_<unix_time>.txt`. Flushes on each game exit (or every 8192 records); first 3 seconds ignored per session. Does not change behavior.
 
-## 编译(docker `kbuild-arm2`,链接设备上的 glibc 库)
+Main request numbers: `0x47` = `DISP_LAYER_SET_CONFIG` (submit layer buffer), `0x4606` = `FBIOPAN_DISPLAY` (blocks until next vblank).
+
+## Build (docker `kbuild-arm2`, link against device glibc)
 
 ```sh
 docker run --rm -v /tmp/ub:/t kbuild-arm2 sh -c 'cd /t/shim && \
@@ -14,11 +16,11 @@ docker run --rm -v /tmp/ub:/t kbuild-arm2 sh -c 'cd /t/shim && \
   arm-linux-gnueabihf-strip pantrace.so'
 ```
 
-## 安装与卸载(设备的 chroot 在 `/overlay`)
+## Install and remove (device chroot at `/overlay`)
 
 ```sh
 adb push pantrace.so /overlay/lib/pantrace.so
 adb shell 'chmod 755 /overlay/lib/pantrace.so; echo /lib/pantrace.so > /overlay/etc/ld.so.preload; sync'
-# 卸载:
+# Uninstall:
 adb shell 'rm -f /overlay/etc/ld.so.preload /overlay/lib/pantrace.so; sync'
 ```
