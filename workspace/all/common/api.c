@@ -1975,7 +1975,8 @@ static void PWR_exitSleep(void) {
 //		SDL_PauseAudio(0);
 //#endif	
 //	}
-	SND_init(sample_rate_bak, frame_rate_bak);
+	// MinUI (launcher) never initialised audio, so there is nothing to restore (the backups are 0)
+	if (sample_rate_bak > 0) SND_init(sample_rate_bak, frame_rate_bak);
 	if (GetHDMI()) {
 		// buh
 	}

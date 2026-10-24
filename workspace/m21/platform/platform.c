@@ -322,7 +322,7 @@ int PLAT_shouldWake(void) {
 	}	
 	return 0;
 	}
-	
+	return 0; // input device not available
 }
 
 static struct VID_Context {

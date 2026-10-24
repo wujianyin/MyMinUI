@@ -4416,6 +4416,7 @@ static int OptionSaveChanges_openMenu(MenuList* list, int i) {
 static int OptionQuicksave_onConfirm(MenuList* list, int i) {
 	Menu_beforeSleep();
 	PWR_powerOff();
+	return MENU_CALLBACK_NOP;
 }
 
 

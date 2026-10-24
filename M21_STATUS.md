@@ -159,6 +159,37 @@
 | 把我们的 USB Mode.pak 做成可随发布包分发的 pak | 中 | 低 | §5 |
 | 排查 ADB 偶发失效、Windows DNS 问题 | 中(我们自己的功能) | 低~中 | §5 |
 
+## 6.1 对 20260208 之后上游提交(2c7a860..HEAD,约 160 个)的审查结果(2026-10-24)
+
+已在 SJGAM M22Pro 上用 adb 实测 GBA,并用 `-Wall -Warray-bounds -Wrestrict -Wformat-overflow` 等严格告警编译了 minarch/api/utils/platform/minui。
+
+**已发现并修复(都已提交):**
+
+| 问题 | 来源 | 现象/风险 | 修复 |
+|---|---|---|---|
+| 显示层改成 ARGB8888 且所有模式都写 32 位 | `c5d07f5`(PR #116,在 LOONG MAY-M21 上测的) | M22Pro 上 GBA 只有 30fps、音频破音 | 显示层恒为 RGB565,去掉 Sharp 选项(`NO_SHARP_SCALER`) |
+| HUD 频率恒为 0 | `getCPUusage()` 里 `a[9]` 越界写 | 换 gcc 12 后正好清零 `cur_cpu_freq` | `a[10]` |
+| HUD 字体变大变糊 | `e114217` 按画面最大边选字体 | 720x1280 画面还要被显示引擎放大 1.5 倍 | `HUD_FONT_MID_MAX 1280` 沿用 10x16 |
+| 亮度/音量不保存 | m21 `SaveSettings()` 老 bug | 每次开机回到默认值 | `O_CREAT`+写结构体+读取校验 |
+| `getCPUusage()` 里 `sprintf` 目标和参数重叠 | 上游 | 未定义行为 | 改成 `snprintf` 追加 |
+| `CPU_SPEED_SLEEP` 环境变量缺失时空指针 | m21 平台代码(`66d5cce`/睡眠改进之后新增) | 旧的 `launch.sh` 搭新二进制会崩 | 缺失时回落到 480000 |
+| 唤醒时对没初始化过的音频调 `SND_init(0,0)` | `PWR_exitSleep()` | MinUI 主界面自动休眠后唤醒,所有平台都会走到 | `sample_rate_bak>0` 才重新初始化 |
+| `PLAT_shouldWake()` 在输入设备打不开时没有 return | m21 平台代码 | 未定义行为 | 补 `return 0` |
+| `OptionQuicksave_onConfirm()` 没有 return | 上游 | 未定义行为(实际上 `PWR_powerOff()` 不返回) | 补 return |
+
+**检查过、不需要改:**
+- 存档从 `.sav` 改名为 `.srm`(`292ee24`):打开游戏时会自动把旧 `.sav` 改名。注意:改名后再退回旧版 minarch 会找不到存档。
+- 更新时删除 `msettings.bin`(`66d5cce`):m21 的 `boot.sh` 已包含;配合我们加的版本校验是安全的。
+- 自动休眠 30 秒、休眠后 120 秒关机:充电时(包括 USB 供电/adb 连着)不会触发,电池供电才有;旧版也有类似行为。
+- `5f85ed8`(修关机崩溃)只改了 h700/miyoomini/my282/r36s 的平台文件,m21 的 `PLAT_quitVideo` 没有同类问题。
+- libsamplerate 依赖:`6ed7394` 声称移除,实际 m21 仍链接 `-lsamplerate` 且设备上有该库,不受影响。
+
+**没有验证、仍有风险:**
+- **电池供电下的自动休眠/唤醒**没法用 adb 测(连着 adb 就是充电状态,休眠不会触发)。
+- **其它核心**:卡里只有 GBA 和 PICO-8 的游戏,其它核心(FC/SFC/MD/PS 等)没跑过新 minarch;核心 `.so` 和 Commander 仍是旧包里的。
+- **ZXS(fuse 核心)** 还没有 m21 版本,发布包里没带。
+- **上游遗留的潜在 bug,没动**:`Core_updateAVInfo()` 在 `av_infonew!=NULL` 时 `memcpy(&av_info,&av_infonew,…)` 取了指针的地址(目前调用方都传 NULL);`rotateIMGScalar()` 旋转 3 的分支用了未初始化的 `y`(只有标量回退路径会用到);一批 `sprintf` 到 256/512 字节路径缓冲区,理论上可溢出。
+
 ## 7. 引用
 
 - 上游:<https://github.com/Turro75/MyMinUI>;Releases:<https://github.com/Turro75/MyMinUI/releases>
