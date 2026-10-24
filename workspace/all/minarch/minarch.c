@@ -2949,14 +2949,15 @@ void getCPUusage(char * data) {
        idle[counter]=idle1[counter]-idle[counter];
        load=((float)(up[counter]-idle[counter])/(float)up[counter])*100.0;
 // now you have the load..
-        sprintf(data,"%s%03.0f%%", data, load);
+        // append (sprintf with data as both destination and argument is undefined behaviour)
+        snprintf(data+strlen(data), 128-strlen(data), "%03.0f%%", load);
         //if (counter == processors) printf("\n");
 // update staic variables for next loop
        up[counter]=up1[counter];
        idle[counter]=idle1[counter];
      }
 	int cputemp = PLAT_getProcessorTemp();	
-	sprintf(data,"%s/%dc/%dMHz", data, cputemp, cur_cpu_freq);
+	snprintf(data+strlen(data), 128-strlen(data), "/%dc/%dMHz", cputemp, cur_cpu_freq);
 	fclose(fp);
 	free(scrap);
 }

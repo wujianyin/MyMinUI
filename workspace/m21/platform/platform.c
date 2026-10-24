@@ -826,7 +826,8 @@ SDL_Surface* PLAT_initVideo(void) {
 		LOG_info("CPU_SPEED_PERF = %d\n", cpufreq_perf);
 		cpufreq_max = atoi(getenv("CPU_SPEED_MAX"));
 		LOG_info("CPU_SPEED_MAX = %d\n", cpufreq_max);
-		cpufreq_sleep = atoi(getenv("CPU_SPEED_SLEEP"));
+		// older launch.sh files do not export CPU_SPEED_SLEEP: fall back to the lowest step
+		cpufreq_sleep = getenv("CPU_SPEED_SLEEP") ? atoi(getenv("CPU_SPEED_SLEEP")) : 480000;
 		LOG_info("CPU_SPEED_SLEEP = %d\n", cpufreq_sleep);
 	} 
 
