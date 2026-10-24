@@ -63,19 +63,27 @@ void preInitSettings(void) {
 		settings = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 		
 		int fd = open(SettingsPath, O_RDONLY);
+		int loaded = 0;
 		if (fd>=0) {
-			read(fd, settings, shm_size);
-			// TODO: use settings->version for future proofing?
+			// only trust a complete file written by this settings version with sane values
+			Settings tmp;
+			if (read(fd, &tmp, shm_size) == shm_size && tmp.version == SETTINGS_VERSION &&
+				tmp.brightness >= 0 && tmp.brightness <= 10 &&
+				tmp.speaker >= 0 && tmp.speaker <= 20 &&
+				tmp.headphones >= 0 && tmp.headphones <= 20) {
+				memcpy(settings, &tmp, shm_size);
+				loaded = 1;
+			}
 			close(fd);
 		}
-		else {
+		if (!loaded) {
 			// load defaults
 			memcpy(settings, &DefaultSettings, shm_size);
 		}
 		
-		// these shouldn't be persisted
-		// settings->jack = 0;
-		// settings->hdmi = 0;
+		// these shouldn't be persisted (keymon sets the real jack state right after start)
+		settings->jack = 0;
+		settings->hdmi = 0;
 	}
 	
 	if (access(ISM22_PATH, F_OK)==0) {
@@ -93,10 +101,14 @@ void InitSettings(void) {
 	// system("echo $(< " BRIGHTNESS_PATH ")");
 }
 static inline void SaveSettings(void) {
-	shm_fd = open(SettingsPath, O_WRONLY, 0644);
-	if (shm_fd>=0) {
-		write(shm_fd, &settings, shm_size);
-		
+	// Upstream opened without O_CREAT (so msettings.bin was never created) and wrote &settings,
+	// i.e. the pointer, instead of the struct it points to: brightness/volume were never persisted.
+	int fd = open(SettingsPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd>=0) {
+		if (write(fd, settings, shm_size) != shm_size) {
+			printf("SaveSettings: short write to %s\n", SettingsPath); fflush(stdout);
+		}
+		close(fd);
 	}
 }
 void QuitSettings(void) {

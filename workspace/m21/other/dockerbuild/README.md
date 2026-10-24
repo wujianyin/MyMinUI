@@ -44,14 +44,20 @@ BASEZIP=/path/MyMinUI-20260208b-0-m21.zip sh workspace/m21/other/dockerbuild/pac
 而设备 rootfs 只有 glibc 2.26。其它程序当时是对着设备库链接的,没有这个问题。
 修复:两者都改成对着设备库(`libc.so.6`、`libdl.so.2`、`librt.so.1`)链接,并加上上面的版本检查和 `verify.sh`。
 
-## 已知问题(上游代码里的 bug,未修)
-- `workspace/m21/libmsettings/msettings.c` 的 `SaveSettings()`:`open()` 没有 `O_CREAT`,文件不存在时永远保存失败(设备上确实没有 `msettings.bin`),
-  而且 `write()` 写的是指针变量地址 `&settings`,不是结构体。结果是 m21 上亮度和音量**从不持久化**,每次开机回到默认值。
-  新版 gcc 把后一个问题当作错误,所以 `build.sh` 里只对这个警告降级,保持和上游一致的行为。以后可以修成 `O_CREAT|O_TRUNC` 加 `write(shm_fd, settings, ...)` 加 `close()`。
+## 在设备上发现并修掉的问题(2026-10-24 实机测试)
+- **GBA 只有 30fps、音频破音**:上游为了 Sharp 缩放器把显示层从 RGB565 改成 ARGB8888,每帧写显存的量翻倍(1080x1920 面板上约 4.9MB→9.8MB),
+  绘制线程占 CPU 从约 35% 涨到约 60%,一帧超出 16.7ms,每帧都错过 vsync,卡在 30fps。
+  修复:m21 的显示层恒为 RGB565,不提供 Sharp(`platform.h` 里 `NO_SHARP_SCALER`,菜单里只剩 Near)。实测提交间隔 16.8ms、59.4fps。
+  定位方法见 `workspace/m21/other/dtb_60fps/pantrace`(测 `DISP_LAYER_SET_CONFIG`/`FBIOPAN_DISPLAY` 间隔),旧版 minarch 同一游戏 59.5fps 作对照。
+- **HUD 的 CPU 频率恒为 0**:`getCPUusage()` 里 `static long a[9]` 却读 10 个值,越界写入相邻变量,换了编译器后正好清零 `cur_cpu_freq`。改成 `a[10]`。
+- **HUD 字体又大又糊**:上游按游戏画面最大边选 15x24 字体,m21 的 720x1280 画面又会被显示引擎放大 1.5 倍。`platform.h` 里 `HUD_FONT_MID_MAX 1280` 让它沿用 10x16。
+- **亮度/音量不保存**(上游老 bug,已修):`SaveSettings()` 的 `open()` 没有 `O_CREAT`,而且 `write()` 写的是指针变量地址 `&settings`。
+  现在是 `O_CREAT|O_TRUNC` 加 `write(fd, settings, ...)` 加 `close()`;读取时校验版本和取值范围,`jack`/`hdmi` 不持久化。
+  注意:更新到修复版之前,若还有旧 keymon 在运行,它会把 `msettings.bin` 覆盖成乱码,所以更新后要完整重启一次;乱码文件会被校验丢弃并回到默认值。
 
 ## 状态(2026-10-24)
 - 上游最新源码(`72ed4f3`)的 minui、minarch、keymon、clock、minput、clear_recent、convertboxart 全部**编译并链接通过**,
   依赖的 glibc 符号版本不高于 2.17。
-- **只验证了能编过,没有在设备上运行过。** 部署前必须备份设备上的 `.system/m21` 并逐项回归。
+- **只验证了能编过,已在 SJGAM M22Pro 上实测 GBA(见上一节)。其它核心和 PICO-8 还没逐个回归,部署前先备份 `.system/m21`。
 - 现在也覆盖了 `libmsettings`、`show`、`overclock`,并用上游相同的优化参数(minui `-Os -flto`,minarch `-O3 -flto=auto` 等)。
 - 还没覆盖:`Commander`(C++)、核心 `.so`、fuse 核心。
