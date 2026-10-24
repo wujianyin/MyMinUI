@@ -188,7 +188,13 @@
 - **电池供电下的自动休眠/唤醒**没法用 adb 测(连着 adb 就是充电状态,休眠不会触发)。
 - **其它核心**:卡里只有 GBA 和 PICO-8 的游戏,其它核心(FC/SFC/MD/PS 等)没跑过新 minarch;核心 `.so` 和 Commander 仍是旧包里的。
 - **ZXS(fuse 核心)** 还没有 m21 版本,发布包里没带。
-- **上游遗留的潜在 bug,没动**:`Core_updateAVInfo()` 在 `av_infonew!=NULL` 时 `memcpy(&av_info,&av_infonew,…)` 取了指针的地址(目前调用方都传 NULL);`rotateIMGScalar()` 旋转 3 的分支用了未初始化的 `y`(只有标量回退路径会用到);一批 `sprintf` 到 256/512 字节路径缓冲区,理论上可溢出。
+
+**上游遗留的潜在 bug(随后也修了):**
+- `Core_updateAVInfo()` 在 `av_infonew!=NULL` 时 `memcpy(&av_info,&av_infonew,…)` 取了指针的地址,改成 `*av_infonew`(目前调用方都传 NULL)。
+- `rotateIMGScalar()` 旋转 3 的分支缺少 `y` 循环、用了未初始化的 `y`(只有标量回退路径会用到),补上循环。
+- `putInt()` 的 8 字节缓冲区装不下 11 位的 int,改成 16。
+- 大量 `sprintf` 往 256/512 字节的路径缓冲区写,路径长了会溢出(严格告警里有 64 处)。m21 的 `platform.h` 里把 `sprintf` 定义成按目标数组大小限长的 `snprintf`
+  (指针目标大小未知时仍然不限长,行为和以前一样)。改完后这类告警降为 0。这个宏只影响 m21 的构建。
 
 ## 7. 引用
 

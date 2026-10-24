@@ -2570,10 +2570,13 @@ void rotateIMGScalar(void *src, void*dst, int rotation, int srcw, int srch, int 
 	} else
 	if (rotation == 3) {
 	//	gettimeofday(&now2,NULL);
-		dsttmp = (uint16_t *)dst + height_minus_1 - y;
-		srctmp = (uint16_t *)src + y * thispitch;
-		for (x = 0; x < srcw; x++) {
-			*((uint16_t *)dsttmp  + x  *  srch) = *((uint16_t *)srctmp + x );
+		// the loop over y was missing, so y was used uninitialised and only one row was rotated
+		for (y = 0; y < srch; y++) {
+			dsttmp = (uint16_t *)dst + height_minus_1 - y;
+			srctmp = (uint16_t *)src + y * thispitch;
+			for (x = 0; x < srcw; x++) {
+				*((uint16_t *)dsttmp  + x  *  srch) = *((uint16_t *)srctmp + x );
+			}
 		}
 	}
 }

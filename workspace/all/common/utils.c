@@ -414,7 +414,7 @@ int getInt(char* path) {
 	return i;
 }
 void putInt(char* path, int value) {
-	char buffer[8];
+	char buffer[16]; // an int needs up to 11 characters
 	sprintf(buffer, "%d", value);
 	putFile(path, buffer);
 }

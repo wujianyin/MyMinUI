@@ -3561,7 +3561,7 @@ void Core_open(const char* core_path, const char* tag_name) {
 int Core_updateAVInfo(struct retro_system_av_info ** av_infonew) {
 	struct retro_system_av_info av_info = {};
 	if (av_infonew != NULL){
-		memcpy(&av_info, &av_infonew, sizeof(struct retro_system_av_info));
+		memcpy(&av_info, *av_infonew, sizeof(struct retro_system_av_info));
 	} else {
 		core.get_system_av_info(&av_info);
 	}	

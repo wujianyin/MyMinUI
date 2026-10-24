@@ -132,6 +132,15 @@ uint32_t PLAT_screenMemSize(void);
 #define FIXED_BPP		2
 // the display layer is RGB565 only: 32bpp frames (sharp scaler) are too slow on this hardware
 #define NO_SHARP_SCALER	1
+
+// Bound every sprintf() whose destination is an array of known size (most of the code builds
+// 256/512 byte path buffers with sprintf; long paths overflowed them). Pointers of unknown size
+// stay unbounded, exactly as before. Needs <stdio.h> first, otherwise the macro would clash
+// with the declaration in stdio.h.
+#include <stdio.h>
+#include <stdint.h>
+#define sprintf(dst, ...) snprintf((dst), (__builtin_object_size((dst), 0) == (size_t)-1) ? (size_t)0x7fffffff : __builtin_object_size((dst), 0), __VA_ARGS__)
+
 // debug HUD: keep the 10x16 font for the 720x1280 game surface (it is upscaled 1.5x by the display engine)
 #define HUD_FONT_MID_MAX	1280
 #define FIXED_DEPTH		(FIXED_BPP * 8)
