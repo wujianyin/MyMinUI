@@ -1269,10 +1269,18 @@ static struct Config {
 			[FE_OPT_SCALER] = {
 				.key	= "minarch_screen_scaler",
 				.name	= "Screen Scaler",
+#ifdef NO_SHARP_SCALER
+				// platform cannot afford the 32bpp frames the sharp scaler needs (e.g. m21)
+				.desc	= "Near uses nearest neighbor sampling.\nSharp is not available on this device.",
+				.default_value = SCALER_NEAREST,
+				.value = SCALER_NEAREST,
+				.count = 1,
+#else
 				.desc	= "Sharp uses bilinear sharp sampling\nNear uses nearest neighbor sampling (forced when scaling=native).",
 				.default_value = SCALER_NEAREST,
 				.value = SCALER_NEAREST,
 				.count = 2,
+#endif
 				.values = scaler_labels,
 				.labels = scaler_labels,
 			},
@@ -1427,6 +1435,9 @@ static void Config_syncFrontend(char* key, int value) {
 	}
 	else if (exactMatch(key,config.frontend.options[FE_OPT_SCALER].key)) {
 		real_scaler = GFX_getRealScaler();
+#ifdef NO_SHARP_SCALER
+		value = SCALER_NEAREST; // stale configs may still say Sharp
+#endif
 		current_scaler = value;
 		if (real_scaler != GFX_getRealScaler())
 		{
@@ -2747,6 +2758,11 @@ int gamerotate = 0;
 #define SDL_MUSTLOCK(thissurface) ((thissurface)->flags & SDL_HWSURFACE)
 #endif
 
+// largest game surface dimension that still uses the 10x16 debug font; a platform can raise it
+// (m21 draws a 720x1280 surface that the display engine upscales 1.5x, the 24px font looked huge/blurry)
+#ifndef HUD_FONT_MID_MAX
+#define HUD_FONT_MID_MAX 720
+#endif
 static void blitBitmapText(char* text, int ox, int oy, SDL_Surface *surface, int x, int y, int width, int height) {
 
     if (surface == NULL || text == NULL || text[0] == '\0') return;
@@ -2764,7 +2780,7 @@ static void blitBitmapText(char* text, int ox, int oy, SDL_Surface *surface, int
         _oy /= 2;
         font_ptr = bitmap_font_9x5;
         font_type = 0;
-    } else if (targetscreenwidth <= 720) {
+    } else if (targetscreenwidth <= HUD_FONT_MID_MAX) {
         _CHAR_WIDTH     = 10;
         _CHAR_HEIGHT    = 16;
         _LETTERSPACING  = 2;
@@ -2908,7 +2924,9 @@ static uint32_t sec_start = 0;
 
 
 
-static long a[9];
+// 10 values are read from each /proc/stat line (user..guest_nice): a[9] used to overflow into a neighbouring
+// static (on m21 it zeroed cur_cpu_freq every second, so the HUD showed 0MHz)
+static long a[10];
 static long up[5], up1[5], idle[5], idle1[5];
 void getCPUusage(char * data) {
 	int counter;
@@ -2940,6 +2958,7 @@ void getCPUusage(char * data) {
 	int cputemp = PLAT_getProcessorTemp();	
 	sprintf(data,"%s/%dc/%dMHz", data, cputemp, cur_cpu_freq);
 	fclose(fp);
+	free(scrap);
 }
 
 

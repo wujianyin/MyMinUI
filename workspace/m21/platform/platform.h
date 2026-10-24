@@ -130,6 +130,10 @@ uint32_t PLAT_screenMemSize(void);
 #define FIXED_WIDTH		640
 #define FIXED_HEIGHT	480
 #define FIXED_BPP		2
+// the display layer is RGB565 only: 32bpp frames (sharp scaler) are too slow on this hardware
+#define NO_SHARP_SCALER	1
+// debug HUD: keep the 10x16 font for the 720x1280 game surface (it is upscaled 1.5x by the display engine)
+#define HUD_FONT_MID_MAX	1280
 #define FIXED_DEPTH		(FIXED_BPP * 8)
 #define FIXED_PITCH		(FIXED_WIDTH * FIXED_BPP)
 #define FIXED_SIZE		(FIXED_PITCH * FIXED_HEIGHT)
