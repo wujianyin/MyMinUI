@@ -16,6 +16,11 @@
 - 当前这份 `sdl2_inc` 不完整(缺 `IMG_GetError`、`IMG_SavePNG_RW`、`TTF_SetFontOutline` 的声明),所以 `build.sh` 里用 `-DIMG_GetError=SDL_GetError`
   绕过;另外两个函数只出现隐式声明警告,返回值不影响。换成完整的 SDL2_image/SDL2_ttf 头文件后可以去掉这些绕法。
 
+## 校验(打包前必做)
+`verify.sh` 用上游发布包里真实的设备 rootfs(glibc 2.26)加 qemu-user,把每个编出来的程序"加载"一遍,能提前复现设备上的
+`version GLIBC_x not found` 一类错误。`build.sh` 末尾还有 glibc 版本检查(2.34 及以上直接报错)。
+`LIBDIR/m21_glibc/` 还需要 `librt.so.1`(从设备 rootfs 的 `/lib/librt-2.26.so` 取出)。
+
 ## 打包
 `run.sh` 编完以后执行 `package.sh`,按顶层 makefile 的 `setup`/`system`/`cores`/`package` 步骤组装发布包,输出到 `releases/MyMinUI-<日期>b-0-m21.zip`:
 
@@ -31,6 +36,13 @@ BASEZIP=/path/MyMinUI-20260208b-0-m21.zip sh workspace/m21/other/dockerbuild/pac
 - 含我们 fork 自己的 `USB Mode.pak`(在 skeleton 里)。
 - 包根目录额外放了一份 `tomato` 和 `emulationstation`(和 `m21/` 里的相同,都是 `boot/boot.sh`),把 zip 直接解压到 FAT32 卡根目录即可,不用手动复制;`boot.sh` 里的 `unzip` 加了 `-x "m21/*" tomato emulationstation`,更新时不会覆盖正在运行的脚本。
 - 包布局和上游 20260208b 的 m21 包一致:`Bios Cheats Emus Roms Tools m21 MinUI.zip MANUAL.txt`(上游旧包是 `README.txt`,新 makefile 已改成 `MANUAL.txt`)。
+
+## 第一次真机测试的教训(2026-10-24)
+第一版包在 M22Pro 上卡在彩条界面:`.userdata/m21/logs/minui.txt` 里是
+`libc.so.6: version GLIBC_2.34 not found (required by .system/m21/lib/libmsettings.so)`。
+原因:`libmsettings.so` 和 `overclock.elf` 是用构建机(Debian bookworm,glibc 2.36)的 libc 链接的,`shm_open` 绑定到了 2.34;
+而设备 rootfs 只有 glibc 2.26。其它程序当时是对着设备库链接的,没有这个问题。
+修复:两者都改成对着设备库(`libc.so.6`、`libdl.so.2`、`librt.so.1`)链接,并加上上面的版本检查和 `verify.sh`。
 
 ## 已知问题(上游代码里的 bug,未修)
 - `workspace/m21/libmsettings/msettings.c` 的 `SaveSettings()`:`open()` 没有 `O_CREAT`,文件不存在时永远保存失败(设备上确实没有 `msettings.bin`),
