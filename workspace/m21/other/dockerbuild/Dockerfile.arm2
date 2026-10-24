@@ -1,0 +1,2 @@
+FROM kbuild-arm
+RUN apt-get update && apt-get install -y --no-install-recommends libc6-dev-armhf-cross && rm -rf /var/lib/apt/lists/*
