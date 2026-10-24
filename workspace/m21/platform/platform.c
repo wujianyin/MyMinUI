@@ -364,6 +364,13 @@ static struct VID_Context {
 	int renderingGame;
 } vid;
 
+// Pixel format of the display layer. RGB565 (2 bytes/px) is the fast default; ARGB8888
+// (4 bytes/px) is only used while the sharp bilinear scaler is active. Writing the 32bpp
+// frames costs the A7 about twice as much per frame, which on the M22Pro dropped GBA from
+// 60 to 30 fps when it was used unconditionally. The format is re-sent on every
+// swap_buffers(), and PLAT_flip() clears both pages whenever it changes.
+static int layer_argb = 0;
+
 //read current graphic status
 void readDispSys(void){
 	FILE *fp;
@@ -722,8 +729,7 @@ int swap_buffers_init(void){
     vid.layer_config.info.alpha_mode = 1;
     vid.layer_config.info.alpha_value = 0xff;
 	vid.layer_config.info.fb.align[0] = 4;//bytes
-    vid.layer_config.info.fb.format = DISP_FORMAT_ARGB_8888;
-	//vid.layer_config.info.fb.format = DISP_FORMAT_RGB_565;
+    vid.layer_config.info.fb.format = layer_argb ? DISP_FORMAT_ARGB_8888 : DISP_FORMAT_RGB_565;
 	vid.layer_config.info.fb.flags = DISP_BF_NORMAL;
 	vid.layer_config.info.fb.scan = DISP_SCAN_PROGRESSIVE;
     vid.layer_config.info.fb.size[0].width = vid.orig_fbwidth; //have to find a way to get this value from sys
@@ -771,8 +777,7 @@ int swap_buffers(int page){
     vid.layer_config.info.alpha_mode = 1;
     vid.layer_config.info.alpha_value = 0xff;
 	vid.layer_config.info.fb.align[0] = 4;//bytes
-    vid.layer_config.info.fb.format = DISP_FORMAT_ARGB_8888;
-	//vid.layer_config.info.fb.format = DISP_FORMAT_RGB_565;
+    vid.layer_config.info.fb.format = layer_argb ? DISP_FORMAT_ARGB_8888 : DISP_FORMAT_RGB_565;
 	vid.layer_config.info.fb.flags = DISP_BF_NORMAL;
 	vid.layer_config.info.fb.scan = DISP_SCAN_PROGRESSIVE;
     vid.layer_config.info.fb.size[0].width = vid.orig_fbwidth; //have to find a way to get this value from sys
@@ -1209,13 +1214,28 @@ void PLAT_pan(void) {
 }
 
 int firstflip=1;
+
+// same rule as PLAT_blitRenderer()/PLAT_getScreenGame(): only the sharp scaler without
+// a screen effect produces 32bpp frames
+static int layer_wants_argb(void) {
+	return (GFX_getRealScaler()!=SCALER_NEAREST) && (effect_type==EFFECT_NONE);
+}
+
 void PLAT_flip(SDL_Surface* IGNORED, int sync) { //this rotates minarch menu + minui + tools
 //	uint32_t now = SDL_GetTicks();
 	if (firstflip==1){
 		system("echo 0 > /sys/class/disp/disp/attr/colorbar");
 		firstflip = 0;
 	}
-	if (!vid.ionmmapfailed) my_ion_prepareWrite();
+	if (!vid.ionmmapfailed) {
+		my_ion_prepareWrite();
+		int want = layer_wants_argb();
+		if (want != layer_argb) {
+			// both pages still hold pixels in the old format, wipe them to avoid garbage borders
+			layer_argb = want;
+			memset(vid.fbmmap, 0, vid.screen_size*2);
+		}
+	}
 	if (!vid.renderingGame) {
 		vid.targetRect.x = 0;
 		vid.targetRect.y = 0;
@@ -1229,7 +1249,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) { //this rotates minarch menu + m
 			FlipRotate000(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			} else {
 	//			LOG_info("Executing 90deg 16\n");
-			FlipRotate000(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+			if (layer_argb) FlipRotate000(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+				else FlipRotate000_16(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			}
 		}
 		if (vid.rotate == 1)
@@ -1241,7 +1262,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) { //this rotates minarch menu + m
 				FlipRotate090(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			} else {
 	//			LOG_info("Executing 90deg 16\n");
-				FlipRotate090(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+				if (layer_argb) FlipRotate090(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+				else FlipRotate090_16(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			}
 		}
 		if (vid.rotate == 2)
@@ -1252,7 +1274,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) { //this rotates minarch menu + m
 			FlipRotate180(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			} else {
 	//			LOG_info("Executing 180deg 16\n");
-			FlipRotate180(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+			if (layer_argb) FlipRotate180(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+				else FlipRotate180_16(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			}
 		}
 		if (vid.rotate == 3)
@@ -1263,7 +1286,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) { //this rotates minarch menu + m
 			FlipRotate270(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			} else {
 	//			LOG_info("Executing 270deg 16\n");
-			FlipRotate270(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+			if (layer_argb) FlipRotate270(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+				else FlipRotate270_16(vid.screen, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			}
 		}
 		//fflush(stdout);
@@ -1279,7 +1303,10 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) { //this rotates minarch menu + m
 		if (vid.ionmmapfailed!=0){
 			FlipRotate000(vid.screengame, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 		} else {
-			if ((GFX_getRealScaler()==SCALER_NEAREST)||(effect_type!=EFFECT_NONE)) {
+			if (!layer_argb) {
+				FlipRotate000_16(vid.screengame, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
+			} else if (vid.screengame->format->BitsPerPixel==16) {
+				// effects force the 565 surface even with the sharp scaler selected (layer is ARGB)
 				FlipRotate000(vid.screengame, vid.fbmmap+vid.offset*vid.page,vid.linewidth, vid.targetRect);
 			} else {
 				// sharp frames are already 32bpp, copy them verbatim
