@@ -1,204 +1,230 @@
-# MyMinUI 在 SJGAM M21 / M22Pro(`m21` 平台)上的适配现状与已知问题
+# MyMinUI on the SJGAM M21 / M22Pro (`m21` platform): status and known problems
 
-整理日期:2026-10-20。目的:在动手做功能完善之前,先搞清楚上游作者已经做了什么、没做什么、哪里有坑。
+> 中文版 (the more detailed original, with the same section numbers): [M21_STATUS.zh-CN.md](M21_STATUS.zh-CN.md) | Back to [README.md](README.md)
 
-## 0. 资料来源和可信度
+Written 2026-10-20, updated 2026-10-25. Purpose: before improving anything, find out what upstream did, what it did not do, and where the traps are.
 
-| 来源 | 内容 | 说明 |
+## 0. Sources and how far to trust them
+
+| Source | Content | Remark |
 |---|---|---|
-| `README.upstream.md`(987 行) | 作者 Turro75 的全部发布说明(2024-10 至 2026-08) | 与 GitHub Releases 页面一致;只有作者自己的说法,未经我们验证 |
-| GitHub Releases(`gh release list`,共 40 个) | 哪些版本带了 m21 的发布包 | 已逐个核对附件名 |
-| 仓库提交历史 | 与 `workspace/m21` 相关的非 fork 提交约 246 条 | 已按时间过一遍 |
-| GitHub Issues / PR(`gh issue`/`gh pr`) | 与 m21/m22pro 相关的 issue #28 #38 #48 #51 #63 #71 #74 #75 #77 #79 #80,PR #111–#116 | 已读正文和评论 |
-| 仓库代码和文档 | `workspace/m21/*`、`skeleton/SYSTEM/m21`、`INSTALL.md`、`workspace/m21/other/dtb_60fps/Readme.md`、`firmware/sjgam-m22pro/` | 已读 |
-| 我们自己的设备(M22Pro) | 设备上读到的版本号、显示参数 | 标注为"实测" |
+| `README.upstream.md` (987 lines) | All release notes by the author Turro75 (2024-10 to 2026-08) | Same as the GitHub Releases page; the author's word only, not verified by us |
+| GitHub Releases (40) | Which releases carried an m21 package | Attachments checked one by one |
+| Commit history | About 246 non-fork commits touching `workspace/m21` | Read in order |
+| GitHub issues / PRs | m21/m22pro related issues #28 #38 #48 #51 #63 #71 #74 #75 #77 #79 #80, PRs #111-#116 | Bodies and comments read |
+| Repository code and docs | `workspace/m21/*`, `skeleton/SYSTEM/m21`, `INSTALL.md`, `workspace/m21/other/dtb_60fps/Readme.md`, `firmware/sjgam-m22pro/` | Read |
+| Our own device (M22Pro) | Versions and display parameters read on the device | Marked "measured" |
 
-标记含义:**[作者]** 作者在发布说明/issue 里的说法;**[实测]** 在我们这台 M22Pro 上看到的;**[代码]** 从仓库代码得出;**[推断]** 我的判断,没有证据直接证明。
+Tags: **[author]** the author's statement in release notes/issues; **[measured]** seen on our M22Pro; **[code]** derived from the repository code; **[inferred]** my judgement, not directly proven.
 
-## 1. 平台概况
+## 1. Platform overview
 
-`m21` 是上游给两台 SJGAM 掌机共用的平台目录:**SJGAM M21**(3.5" 640x480 横屏)和 **SJGAM M22Pro**(1080x1920 竖屏面板,横着用)。另外还有一台 LOONG MAY-M21(PR 作者的设备,H133)。
+`m21` is the platform directory shared by two SJGAM handhelds: the **SJGAM M21** (3.5" 640x480 landscape) and the **SJGAM M22Pro** (1080x1920 portrait panel, used sideways). A third device, the LOONG MAY-M21 (H133), belongs to a PR author.
 
-- 芯片 [作者]:Allwinner H133(sun8iw20),双核 Cortex-A7,最高 1.2GHz,**没有 GPU**,厂商宣传的 "N909" 就是它。内存 256MB [我们的固件分析]。
-- 系统 [作者][实测]:原厂 Tina Linux(musl)只读,16MiB SPI NOR 已满。作者的做法:原厂的 `/usr/tomato`(=SD 卡根目录的 `tomato`)作为钩子,用 fuse2fs 把 SD 卡上的 `rootfs.ext2`(glibc)挂到 `/overlay`,再 `chroot` 进去运行 MinUI。所有 MinUI 二进制都按 glibc 工具链编译。
-- 显示 [代码][实测]:
-  - 屏幕只接受 RGB8888,且每个像素最高字节必须是 0xff 才可见 [作者];所以 SDL 的 flip/render 用不了,作者自己写了 framebuffer + 显示层(`/dev/disp` + ION,`sunxi_display2.h`)的渲染器(`workspace/m21/platform/platform.c`)。
-  - M22Pro 面板物理 1080x1920,程序按 1280x720 绘制(`DEVICE_WIDTH/HEIGHT`),旋转 90 度后以 720x1280 写入显示层,由显示引擎放大到面板大小。设备上实测:`fb[1280,1280] crop[0,0,720,1280] frame[0,0,1080,1920]`。
-  - M21 与 M22 靠文件 `/mnt/SDCARD/m21/thisism22` 区分 [代码];我们的设备上这个文件存在(2 字节)。
-  - 内置屏刷新:M22Pro 原厂设备树只有 **38fps**,M21 约 50fps [作者];HDMI 可以到 60fps。
-- 输入 [作者]:
-  - M22Pro 没有 Menu 键,用 **Select+Start** 模拟;没有电源键,只有物理电源开关,长按 Select+Start 2 秒执行关机(软件只能关到"可以断电"的状态)。
-  - 面板按键是 BAYX 布局,代码里把 A/B、X/Y 对调成 ABYX(和其他 Miyoo/Anbernic 一致)。可编辑 `.system/m21/custombuttonmapping.env` 改键 [作者][代码]。
-  - 摇杆是**数字摇杆,硬连到按键**,没有模拟量,也不能重映射(issue #77)。
-- 时间/电源 [作者]:没有 RTC,关机时保存系统时间、开机恢复(用物理开关断电不会保存);睡眠 = 黑屏,Select 唤醒,2 分钟后自动"关机"(仍需手动拨开关);CPU 频率档位 480/720/912/1008/1104/1200MHz [代码]。
-- 安装 [代码]:`INSTALL.md` 的 SJGAM 一节——FAT32 SD 卡,把发布包里的 `m21/` 目录复制过去,`m21/emulationstation` 和 `m21/tomato` 再复制到根目录,整个 zip 保持压缩放在根目录;首次启动自动安装(需要创建 swap,**耐心等**)。
+- SoC [author]: Allwinner H133 (sun8iw20), dual Cortex-A7 up to 1.2 GHz, **no GPU**; the "N909" of the marketing is this chip. 256 MB RAM [our firmware analysis].
+- System [author][measured]: the stock Tina Linux (musl) is read-only and the 16 MiB SPI NOR is full. The author's approach: the stock hook `/usr/tomato` (= `tomato` in the SD card root) mounts `rootfs.ext2` (glibc) from the card to `/overlay` with fuse2fs and `chroot`s into it to run MinUI. All MinUI binaries are built for glibc.
+- Display [code][measured]:
+  - The panel accepts RGB8888 only, and the top byte of every pixel must be 0xff to be visible [author]; SDL flip/render is unusable, so the author wrote a framebuffer + display-layer renderer (`/dev/disp` + ION, `sunxi_display2.h`) in `workspace/m21/platform/platform.c`.
+  - The M22Pro panel is physically 1080x1920. The program draws 1280x720 (`DEVICE_WIDTH/HEIGHT`), rotates by 90 degrees and writes 720x1280 into the layer; the display engine scales it to the panel. Measured: `fb[1280,1280] crop[0,0,720,1280] frame[0,0,1080,1920]`.
+  - M21 and M22 are told apart by the file `/mnt/SDCARD/m21/thisism22` [code]; it exists (2 bytes) on our device.
+  - Internal panel refresh: the stock M22Pro device tree gives only **38 fps**, the M21 about 50 fps [author]; HDMI reaches 60 fps.
+- Input [author]:
+  - The M22Pro has no Menu key; **Select+Start** emulates it. There is no power key, only a physical power switch; holding Select+Start for 2 s performs the "shutdown" (software can only shut down to the point where you may cut power).
+  - The face buttons are BAYX; the code swaps A/B and X/Y to ABYX like other Miyoo/Anbernic devices. Edit `.system/m21/custombuttonmapping.env` to remap [author][code].
+  - The stick is **digital, wired to buttons**: no analog values, cannot be remapped (issue #77).
+- Time/power [author]: no RTC; the system time is saved at "soft shutdown" and restored at boot (not saved when you use the switch). Sleep = black screen, Select wakes, "shutdown" after 2 minutes (you still flip the switch). CPU steps 480/720/912/1008/1104/1200 MHz [code].
+- Install [code]: SJGAM section of `INSTALL.md`: FAT32 card, copy the `m21/` directory of the release, copy `m21/emulationstation` and `m21/tomato` to the root, keep the zip in the root; first boot installs automatically (it creates swap, **be patient**).
 
-### 1.1 硬件与显示链路(2026-10-22 adb 和固件设备树实测)
+### 1.1 Hardware and display chain (measured with adb and the firmware device tree, 2026-10-22)
 
-| 项目 | 结果 | 证据 |
+| Item | Result | Evidence |
 |---|---|---|
-| SoC | 全志 H133(sun8iw20,与 R528/T113 同族) | `/proc/device-tree/model`=`sun8iw20`,compatible=`allwinner,h133`、`arm,sun8iw20p1` |
-| CPU | 双核 Cortex-A7,NEON、VFPv4;可用频率 480/720/912/1008/1104/1200 MHz | `/proc/cpuinfo`,`cpufreq/scaling_available_frequencies` |
-| 内存 | 约 234MB 可用(`MemTotal` 239908 kB) | `/proc/meminfo` |
-| GPU | **没有** | 固件 dts 和运行中的设备树里没有 gpu/mali/powervr/sgx 节点;`/dev` 下没有 dri/mali/pvr/kgsl;`/sys/class` 没有 drm 和 devfreq;dmesg 无 GPU 日志;overlay 里只有 libdrm,没有 Mali/EGL/GLES 库 |
-| 有的图形相关硬件 | G2D(`g2d@5410000`,`/dev/g2d`,2D 加速)、显示引擎 DE(`disp@5000000`,`/dev/disp`)、视频编解码 Cedar(`ve@1c0e000`,`/dev/cedar_dev`)、deinterlace、CE 加密、摄像头输入 vind | 设备树节点和 `/dev` |
+| SoC | Allwinner H133 (sun8iw20, same family as R528/T113) | `/proc/device-tree/model` = `sun8iw20`, compatible `allwinner,h133`, `arm,sun8iw20p1` |
+| CPU | Dual Cortex-A7, NEON, VFPv4; 480/720/912/1008/1104/1200 MHz | `/proc/cpuinfo`, `cpufreq/scaling_available_frequencies` |
+| Memory | About 234 MB usable (`MemTotal` 239908 kB) | `/proc/meminfo` |
+| GPU | **None** | No gpu/mali/powervr/sgx node in the firmware dts or the running device tree; no dri/mali/pvr/kgsl in `/dev`; no drm or devfreq in `/sys/class`; no GPU in dmesg; only libdrm in the overlay, no Mali/EGL/GLES libraries |
+| Graphics related hardware present | G2D (`g2d@5410000`, `/dev/g2d`, 2D acceleration), display engine DE (`disp@5000000`, `/dev/disp`), video codec Cedar (`ve@1c0e000`), deinterlace, CE crypto, camera input vind | Device tree nodes and `/dev` |
 
-显示链路 [代码][推断]:核心或 MinUI 用 CPU(NEON)把一帧画进 ION 物理连续内存 → CPU 旋转 90° → 通过 `/dev/disp` 的 `pan_display` 让 DE 读取该图层 → DE 缩放到 1080x1920 并经 MIPI-DSI 送面板。DE 是固定功能的显示读取和合成单元,不是 GPU,画什么完全由 CPU 决定。`pan_display` 会阻塞约 6ms 等 vblank,所以 60Hz 补丁(改面板时序和 DSI 速率)和 Prevent Tearing 都作用在这一段。`colorbar` 属性是 DE 自带的测试图案,不经过 CPU。
+Display chain [code][inferred]: the core or MinUI draws a frame with the CPU (NEON) into ION physically contiguous memory, the CPU rotates it by 90 degrees, `pan_display` on `/dev/disp` lets the DE read that layer, the DE scales to 1080x1920 and sends it over MIPI-DSI.
+The DE is a fixed-function scan-out and composition unit, not a GPU; what is drawn is entirely up to the CPU. `pan_display` blocks about 6 ms waiting for vblank, so the 60 Hz patch (panel timing and DSI rate) and Prevent Tearing both act here. The `colorbar` attribute is a DE test pattern that does not involve the CPU.
+Consequence: cores that need 3D (PSP, DC ...) are out of reach; the available accelerations are NEON and, not yet evaluated, G2D for rotate/scale (see section 6).
 
-由此带来的限制:需要 3D 的核心(PSP、DC 等)跑不动;能做的加速只有 NEON,以及用 G2D 做旋转和缩放(尚未评估,见第 6 节)。
+## 2. m21 timeline
 
-## 2. 适配时间线(m21 相关)
-
-| 日期 | 事件 |
+| Date | Event |
 |---|---|
-| 2024-10-08 | 首次支持 M21。当时**不能用**:NDS、Amiga、retroarch、外接手柄、HDMI。特殊处理:双击 Menu 睡眠、长按 Menu 3 秒关机 |
-| 2024-11-04/05 | 外接手柄(仅 SJGAM 私有协议、仅 1 个)、HDMI 输出含音频、最小音量静音、按键布局调整、CORE_THREAD_VIDEO(核心线程拆分,PS1 BR2 约 56fps)、32bpp 像素格式 |
-| 2024-12-01 | 自动旋转核心画面(竖版街机游戏),m21 最先支持 |
-| 2024-12-15 | 作者的 M21 坏了,**停止发布** |
-| 2025-01-27 | 重新启用 m21 构建,并加入 M22Pro(HDMI + 1 个外接手柄) |
-| 2025-04-02 | 全平台双缓冲 + vsync 大改,m21 又因作者设备损坏没跟上 |
-| 2025-04-13 / 04-30 | 发布 `sjgam_m21_m22`、`SJGAM-M21-M22p` 版,靠用户测试修复撕裂和旋转 |
-| 2025-05-25 | **重新完整支持 m21/m22**:显示层双缓冲、Select+Start 菜单/关机、睡眠逻辑、默认 1280x720、`custom_hdmi_settings.txt`;vsync 因固定 50/38fps 被禁用 |
-| 2025-08-03 ~ 2025-12-28 | 渲染流程统一、修闪烁(#71,12-23 版修复);2025-12-29 提交锁定各核心的 git 版本 |
-| 2026-01-09 | 显示层驱动完善、启动色条、可自定义按键映射(#74)、HDMI 下启用硬件 vsync |
-| 2026-01-18 | 文档化 M22Pro 设备树修改以达到 60fps(`dtb_60fps`) |
-| 2026-01-26 | 安装/更新改进,安装画面按屏幕方向旋转 |
-| 2026-02-04 / 02-08 | 02-04 版在 M21 上黑屏(#79,驱动按 M22 调的,初始化值对 M21 不对),02-08 版修复。**这是最后一个带 m21 包的正式版本** |
-| 2026-05-25 ~ 2026-08-05 | 5 个正式版,**都没有 m21 包**(见 §4.1) |
-| 2026-06-06 | 作者声明:M22Pro 也坏了(摔了之后没显示),**不再支持 m21 平台、不再发布** |
-| 2026-08-07 ~ 08-08 | 社区用户 WladmirDotNet(有一台 LOONG MAY-M21)提交并合并:PR #114 修复 m21 编译(bit-rot)、#116 用 ARGB8888 显示层给 m21 启用 sharp 缩放、#115 修红色通道、#111 越界写 |
-| 2026-08-10 | 作者提交 `72ed4f3`:把 `m21` 恢复到默认构建平台列表。**但截至今天没有新的正式发布**(最新是 2026-08-05 版,无 m21 包) |
+| 2024-10-08 | First M21 support. **Not working** then: NDS, Amiga, retroarch, external gamepad, HDMI. Special handling: double-press Menu to sleep, hold Menu for 3 s to power off |
+| 2024-11-04/05 | External gamepad (SJGAM private protocol only, one pad), HDMI output with audio, mute at minimum volume, button layout changes, CORE_THREAD_VIDEO (core thread split, PS1 BR2 about 56 fps), 32bpp pixel format |
+| 2024-12-01 | Auto-rotate core output (vertical arcade games), m21 first |
+| 2024-12-15 | The author's M21 broke, **releases stopped** |
+| 2025-01-27 | m21 build re-enabled, M22Pro added (HDMI + one external pad) |
+| 2025-04-02 | Global double buffering + vsync rework; m21 fell behind again (device broken) |
+| 2025-04-13 / 04-30 | `sjgam_m21_m22` and `SJGAM-M21-M22p` releases; tearing and rotation fixed with user testing |
+| 2025-05-25 | **m21/m22 fully supported again**: display-layer double buffering, Select+Start menu/power-off, sleep logic, default 1280x720, `custom_hdmi_settings.txt`; vsync disabled because of the fixed 50/38 fps |
+| 2025-08-03 to 2025-12-28 | Unified render path, flicker fixed (#71, fixed in the 12-23 release); 2025-12-29 core git versions pinned |
+| 2026-01-09 | Display driver polish, boot colour bar, custom button mapping (#74), hardware vsync on HDMI |
+| 2026-01-18 | Device tree changes for 60 fps on the M22Pro documented (`dtb_60fps`) |
+| 2026-01-26 | Install/update improvements, install screen rotated with the screen |
+| 2026-02-04 / 02-08 | The 02-04 release gives a black screen on the M21 (#79, the driver was tuned for M22, wrong init values for M21); 02-08 fixes it. **The last official release with an m21 package** |
+| 2026-05-25 to 2026-08-05 | Five official releases, **none with an m21 package** (see 4.1) |
+| 2026-06-06 | The author announces the M22Pro broke too (no display after a drop): **m21 is no longer supported or released** |
+| 2026-08-07 to 08-08 | Community user WladmirDotNet (owns a LOONG MAY-M21) merges: PR #114 fixes the m21 build (bit-rot), #116 enables sharp scaling on m21 with an ARGB8888 layer, #115 red channel fix, #111 out-of-bounds write |
+| 2026-08-10 | Author commit `72ed4f3` puts `m21` back in the default platform list. **No new official release up to today** (latest is 2026-08-05, without m21) |
 
-## 3. 当前功能状态
+## 3. Feature status
 
-我们设备上运行的版本:**MyMinUI-20260208b-0**(`.system/version.txt`,提交 `2c7a860`)[实测]。
+Version running on our device: **MyMinUI-20260208b-0** (`.system/version.txt`, commit `2c7a860`) [measured]; since 2026-10-24/25 we run our own build of the current upstream HEAD (see 6.1/6.2).
 
-### 3.1 作者说"能用"的
-| 功能 | 状态 | 备注 |
+### 3.1 "Works" according to the author
+
+| Feature | Status | Remark |
 |---|---|---|
-| 启动器 / 游戏内菜单 / 存档预览 / 封面 | 能用 [作者] | 我们的设备能进入界面 [实测] |
-| 31 个系统(Emus pak) | 能用 [代码][作者] | A2600/5200/7800、DOOM、DOS、FBN、FC、GB/GBA/GBC、GG、MAME、MD、NG、NGCD、NGP/NGPC、PCE、PKM、PS、PUAE(Amiga)、QUAKE、SFC、SGB、SMS、SUPA、VB、WS、ZXS、P8/P8N(原生 Pico-8) |
-| 渲染 | 显示层双缓冲 [作者] | 内置屏不能开 vsync(见 §4.2) |
-| 缩放 | nearest;sharp(PR #116,**在 02-08 版之后,未发布**) | 当前设备版本只有旧缩放 [推断] |
-| HDMI | 能用,默认 1280x720p60 [作者] | 可改 `.system/m21/custom_hdmi_settings.txt`(建议 854x480p60 提升性能) |
-| 外接手柄 | 仅 SJGAM 私有手柄,1 个 [作者] | #63(M22 双手柄)未解决 |
-| 自动旋转竖版街机游戏 | 能用 [作者] | |
-| 睡眠 / 关机 | 能用但行为特殊 [作者] | 见 §1 |
-| 调试 HUD(CPU、帧率、温度、电量) | 能用 [作者] | |
-| 作弊码 | 能用 [作者] | 2025-12-16 起 |
-| 重映射按键 | 编辑 `custombuttonmapping.env` [作者] | 没有界面 |
+| Launcher / in-game menu / save-state preview / box art | Works [author] | The UI comes up on our device [measured] |
+| 31 systems (Emus paks) | Works [code][author] | A2600/5200/7800, DOOM, DOS, FBN, FC, GB/GBA/GBC, GG, MAME, MD, NG, NGCD, NGP/NGPC, PCE, PKM, PS, PUAE (Amiga), QUAKE, SFC, SGB, SMS, SUPA, VB, WS, ZXS, P8/P8N (native Pico-8) |
+| Rendering | Display-layer double buffering [author] | No vsync on the internal panel (see 4.2) |
+| Scaling | nearest; sharp (PR #116, **after 02-08, unreleased**) | We removed sharp on m21 (see 6.1) |
+| HDMI | Works, default 1280x720p60 [author] | Edit `.system/m21/custom_hdmi_settings.txt` (854x480p60 is faster) |
+| External gamepad | SJGAM private pad only, one [author] | #63 (two pads on M22) unresolved |
+| Auto-rotate vertical arcade games | Works [author] | |
+| Sleep / power off | Works but special [author] | See section 1 |
+| Debug HUD (CPU, fps, temperature, battery) | Works [author] | |
+| Cheats | Works [author] | Since 2025-12-16 |
+| Button remap | Edit `custombuttonmapping.env` [author] | No UI |
 
-### 3.2 明确不能用或没做的
-| 功能 | 状态 | 来源 |
+### 3.2 Explicitly not working or not done
+
+| Feature | Status | Source |
 |---|---|---|
-| NDS 模拟 | 不支持 | [作者] 首发说明;NDS 只给 miyoomini/a30 |
-| retroarch | 不能用 | [作者] 首发说明,作者曾考虑整体放弃 retroarch |
-| 外接手柄 2P | 不支持 | issue #63,作者有旧分支 `testmultiplayer` 但没合并 |
-| 摇杆模拟量 | 硬件限制 | #77 |
-| 内置屏 vsync/60fps | 原厂设备树限制 | 见 §4.2 |
-| 软件关机/开机 | 硬件限制(只有物理开关) | [作者] |
-| 非 M22 的 Menu 键 | M22Pro 无 Menu 键,靠 Select+Start | [作者] |
+| NDS emulation | Not supported | [author] first release notes; NDS only for miyoomini/a30 |
+| retroarch | Does not work | [author] first release notes |
+| External pad for player 2 | Not supported | issue #63, an old `testmultiplayer` branch exists but was never merged |
+| Analog stick | Hardware limit | #77 |
+| vsync / 60 fps on the internal panel | Stock device tree limit | See 4.2 |
+| Software power on/off | Hardware limit (physical switch only) | [author] |
+| Menu key on M22 | None; Select+Start | [author] |
 
-## 4. 已知问题与风险
+## 4. Known problems and risks
 
-### 4.1 维护状态(最大的风险)
-1. **没有人持有 M21/M22Pro 做主力测试。** 作者的 M21 和 M22Pro 先后损坏 [作者]。唯一的社区测试者持有 LOONG MAY-M21(不是 M22Pro)。
-2. **最后一个 m21 正式包是 20260208b-0。** 之后上游改了很多全局代码(新音频引擎、新缩放器、睡眠模式、更新时重置亮度/音量设置、`PLAT_getVsyncInterval` 接口等),这些在 m21 上**从未由作者验证**:
-   - 2026-08 的 PR #114 说明 m21 一度**连编译都不通过**(`SHARPNESS_SOFT` 被删、缺 `PLAT_getVsyncInterval`);
-   - 2026-05-25 版本说明里"去掉 nextui 的音频修复、改用新音频引擎"对 m21 的影响没有任何说明 [推断:需要验证]。
-3. **工具链来源已失效。** `makefile.toolchain` 从 `shauninman/union-m21-toolchain` 克隆,该仓库已不存在(PR #114 作者的说法)。需要手工使用作者 releases 里的 `sjgam_m21_toolchain` 并解压到 `toolchains/m21-toolchain/`。
-4. m21 的构建流程(`make m21` = `clean setup common package`)与 h700/r36s(`build system cores package`)不同:**核心 `.so` 不在 git 里**(`**/cores/output` 被 `.gitignore` 忽略);我们本地的 `workspace/m21/cores/output` 里有 24 个 `.so`,来源没有核实 [代码]。所以从干净克隆出发无法直接 `make m21` 得到完整发布包,核心要另外构建或取自发布包 [推断]。
+### 4.1 Maintenance state (the biggest risk)
 
-### 4.2 显示与撕裂
-- M22Pro 内置屏原厂设备树把刷新率设成 **38fps**;M21 约 50fps。vsync 一旦打开帧率就被拖到这个数值,所以**内置屏上 vsync 被强制关闭** [作者],只靠双缓冲减轻撕裂,**仍可能看到撕裂**。
-- 我们设备 [实测]:`ref_fps:38`,说明用的是原厂设备树,没有改过。
-- 作者记录了修改设备树达到 60fps 的方法(`workspace/m21/other/dtb_60fps/Readme.md`):提取 `mtdblock0`、改 `lcd0` 节点的时序、重新编译,再用 `dd` 写回 `/dev/mtdblock0`。**只对 M22Pro 有效,M21 刷了会变砖**;刷 SPI NOR 本身有变砖风险。启动脚本通过 `fps:38` 判断是否已打过补丁(`NEWDTB` 环境变量)。**发布包不含刷写工具**(已核对 20260118/0126/0208 三个 m21 包和 git 历史),只有这份手动步骤和上述检测逻辑;作者 Readme 里提到的 "modified tomato script" 是自用,未发布。2026-10-20 已在设备上只读核对:`mtdblock0` 与仓库镜像 SHA256 一致、屏幕为 hx8399、运行中设备树时序与补丁假设一致,详见 [RISK_ASSESSMENT.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) 补充章节。FEL 实测:`reboot efex` 可进入,`sunxi-fel version` 识别为 R528;原版 `sunxi-fel` 不支持 R528 的 SPI,我们打补丁后(`sunxi-fel-r528-spi.patch`)已能读写整颗 16 MiB SPI NOR。**2026-10-20 已在本机刷入 60Hz 补丁并验证:`ref_fps:60`、`fps:60.2`、正常开机**,详见 RISK_ASSESSMENT.md 补充 6。
-- issue #80(M22Pro,NES 画面撕裂/声音):作者建议内置屏关掉 tearing 设置,同步参考选 `Core` 或 `NoFix`;用户反馈 `Core` 最好 [作者]。
-- issue #71:动作键按下时闪屏,与作弊码初始化有关,2025-12-23 版修复。
+1. **Nobody holds an M21/M22Pro for main testing.** The author's M21 and M22Pro broke one after the other [author]. The only community tester owns a LOONG MAY-M21 (not an M22Pro).
+2. **The last m21 official package is 20260208b-0.** Upstream then changed much global code (new audio engine, new scaler, sleep mode, resetting brightness/volume on update, the `PLAT_getVsyncInterval` interface ...), none of it ever verified on m21 by the author:
+   - PR #114 (2026-08) shows m21 once did not even **compile** (`SHARPNESS_SOFT` removed, `PLAT_getVsyncInterval` missing);
+   - the 2026-05-25 note "drop nextui audio fix, use the new audio engine" has no statement about m21 [inferred: needs verification].
+3. **The toolchain source is gone.** `makefile.toolchain` clones `shauninman/union-m21-toolchain`, which no longer exists (PR #114 author). Our fork builds without it: `workspace/m21/other/dockerbuild/`.
+4. The m21 build flow (`make m21` = `clean setup common package`) differs from h700/r36s (`build system cores package`): **core `.so` files are not in git** (`**/cores/output` is git-ignored); our local `workspace/m21/cores/output` has 24 `.so` of unverified origin [code]. A clean clone cannot produce a complete release by `make m21`; cores must be built separately or taken from a release [inferred]. Our `package.sh` takes them from the 20260208b release.
 
-### 4.3 设备差异(M21 vs M22)
-- 渲染驱动是按 **M22 的参数**调的,M21 上出现过黑屏(#79,2026-02-08 版修复)和菜单镜像/按键错位 [作者]。由于作者手上只剩 M22 的信息,**M21 的回归风险更高**。
-- 两者靠 `thisism22` 文件区分:安装时需要正确放置,否则旋转/分辨率会错。
-- HDMI 不旋转,内置屏旋转 90 度,代码里分别处理(包括原生 Pico-8)[作者]。
+### 4.2 Display and tearing
 
-### 4.4 输入与电源
-- 摇杆是数字的 → 没有模拟量游戏支持(#77)。
-- M22 按 Select+Start 同时是原厂的"切换 1P/2P"(原厂固件里)和 MyMinUI 的菜单快捷键,导致与第二个手柄冲突(#63,用户要求加一个选项)。
-- 没有软件开机/关机键,关机后需要手动拨电源开关。系统时间只在"软关机"时保存。
+- The stock M22Pro device tree sets the refresh rate to **38 fps** (M21 about 50 fps). With vsync on, the frame rate is dragged down to that value, so **vsync is forced off on the internal panel** [author]; only double buffering reduces tearing, and **tearing may still be visible**.
+- Our device [measured]: `ref_fps:38` originally, i.e. the stock device tree.
+- The author documented how to reach 60 fps by editing the device tree (`workspace/m21/other/dtb_60fps/Readme.md`): extract `mtdblock0`, change the timing of the `lcd0` node, recompile and `dd` it back to `/dev/mtdblock0`. **Only valid for the M22Pro; flashing it to an M21 bricks it**; writing the SPI NOR is risky in itself. The boot script detects the patch with `fps:38` (`NEWDTB` environment variable). **The release packages contain no flashing tool**; only the manual steps and the detection logic exist.
+  On 2026-10-20 we verified read-only on the device: `mtdblock0` has the same SHA256 as the repository image, the panel is hx8399, the running device tree timing matches the assumption (see [RISK_ASSESSMENT.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md)). FEL works: `reboot efex`, `sunxi-fel version` reports R528; stock `sunxi-fel` cannot do R528 SPI, our patched one (`sunxi-fel-r528-spi.patch`) reads and writes the whole 16 MiB SPI NOR.
+  **On 2026-10-20 the 60 Hz patch was flashed on our own device and verified: `ref_fps:60`, `fps:60.2`, normal boot.**
+- Issue #80 (M22Pro, NES tearing/sound): the author suggests turning off the tearing option on the internal panel and choosing `Core` or `NoFix` for the sync reference; users report `Core` is best [author].
+- Issue #71: flashes when pressing action buttons, related to cheat initialisation, fixed in the 2025-12-23 release.
 
-### 4.5 安装与升级
-- 必须使用正确命名的 `MyMinUI-*-m21.zip`,不要改成 `MinUI.zip`(#51,多位用户踩坑);SD 卡兼容性也出现过问题。
-- 升级会覆盖大部分文件,但 `custombuttonmapping.env` 不再被覆盖(2026-02-07 起)[作者]。
-- 2026-06-14 起,每次更新都会重置亮度/音量设置 [作者](对 m21 的影响没有验证)。
+### 4.3 Device differences (M21 vs M22)
 
-### 4.6 构建
-- 需要在 `PLATFORMS`/工具链里确认 m21 仍可构建;PR #114 说明需要 `-lsamplerate`(已在 `makefile.env` 加入)。
-- fbneo、mame32 核心编译吃内存,Docker 内存太小会 `lto1` 被杀(#75);作者在 Mac mini 上需要 6GB 内存加 4GB swap,有时需要重跑。
-- 编译产物里 glibc 版本的二进制只能在 chroot 里运行,要直接在原厂系统运行必须用 musl 工具链(#48)。
+- The render driver was tuned for **M22 parameters**; M21 had a black screen (#79, fixed 2026-02-08) and mirrored menus/misplaced buttons [author]. With only M22 information at hand the **regression risk on the M21 is higher**.
+- They are told apart by the `thisism22` file: it must be placed correctly or rotation/resolution will be wrong.
+- HDMI is not rotated, the internal panel is rotated by 90 degrees; the code handles them separately (also native Pico-8) [author].
 
-## 5. 我们设备上已经发现的、与上游无关的问题
+### 4.4 Input and power
 
-这部分是我们自己在做 USB 功能时发现的,详细记录见 `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md`:
-- USB Mode.pak(存储、ADB、串口、网络、Host、开机默认项)是我们在这个 fork 里加的,上游没有。
-- `curl` 没有任何协议、`wget` 不支持 https:原厂工具限制。
-- ADB 偶发:切换其他 USB 开关后可能失效,需要在 USB Mode 里把 ADB 关了再开(根因未查)。
-- Windows 共享网络后域名解析卡住(IP 通,`ping www.baidu.com` 有问题,待查)。
+- Digital stick: no analog support (#77).
+- On the M22, Select+Start is both the stock "switch 1P/2P" (stock firmware) and MyMinUI's menu shortcut, which conflicts with a second pad (#63).
+- No software power on/off; flip the switch after "shutdown". The system time is saved only on a "soft shutdown".
 
-## 6. 适合着手的功能完善方向(建议,未做过评估)
+### 4.5 Install and upgrade
 
-这些是根据以上资料整理的候选项,是否做、先做哪个由你决定:
+- The release must keep its `MyMinUI-*-m21.zip` name; do not rename it to `MinUI.zip` (#51, several users stumbled); SD card compatibility problems also occurred.
+- Upgrades overwrite most files, but `custombuttonmapping.env` is no longer overwritten (since 2026-02-07) [author].
+- Since 2026-06-14 every update resets brightness/volume [author] (not verified for m21; our `boot.sh` merge handles it, see 6.2).
 
-| 方向 | 价值 | 难度/风险 | 依据 |
+### 4.6 Build
+
+- Check that m21 still builds in `PLATFORMS`/the toolchain; PR #114 needs `-lsamplerate` (added to `makefile.env`).
+- The fbneo and mame32 cores need much memory; with small Docker memory `lto1` gets killed (#75); the author needs 6 GB RAM and 4 GB swap on a Mac mini and sometimes reruns.
+- glibc binaries only run in the chroot; to run them in the stock system you need the musl toolchain (#48).
+
+## 5. Problems we found that are unrelated to upstream
+
+Found while doing the USB work (details in `workspace/m21/other/usbmode/FEATURES_AND_ISSUES.md`):
+
+- USB Mode.pak (storage, ADB, serial, network, host, boot defaults) is ours; upstream has nothing like it.
+- `curl` has no protocols and `wget` has no https: stock tool limits.
+- ADB occasionally stops after toggling other USB switches; turn it off and on in USB Mode (root cause not found).
+- After sharing the Internet from Windows, name resolution hangs (IP works; `ping www.baidu.com` has a problem).
+- A hard power cut can leave the SD card with FAT errors and the kernel remounts it read-only; MinUI then sticks on the colour bar. Repair: [SD_RESTORE.md](SD_RESTORE.md) section B.
+
+## 6. Candidate improvements (suggestions, not evaluated)
+
+Whether to do them and in which order is your decision:
+
+| Direction | Value | Difficulty/risk | Basis |
 |---|---|---|---|
-| 把 20260208 之后的上游提交(新音频引擎、sharp 缩放、睡眠改进、PR #111–#116)合入并在 M22Pro 上逐项验证 | 高:当前设备版本落后很多,且 m21 一度编不过 | 中:需要验证音频、缩放、睡眠 | §4.1 |
-| 在 M22Pro 上验证并(如需要)修复新缩放器 sharp 模式 | 中:画质提升 | 中:PR #116 是在 LOONG MAY-M21 上测的,不是 M22Pro | §2 |
-| 内置屏 60fps:设备树补丁 | 高:解决撕裂/帧率上限,可开 vsync | **高**:写 SPI NOR,有变砖风险;只适用 M22Pro;已做离线评估和更保守的补丁脚本(只写 2 个扇区),见 [RISK_ASSESSMENT.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) | §4.2 |
-| 外接手柄 2P(#63) | 中 | 中:有旧分支参考,需解决 Select+Start 冲突 | §4.4 |
-| 按键映射界面(目前只能改 env 文件) | 低~中 | 低 | §3.1 |
-| 修复构建链:工具链来源、README 说明、`make m21` 流程 | 中:便于以后复现 | 低 | §4.1 |
-| 把我们的 USB Mode.pak 做成可随发布包分发的 pak | 中 | 低 | §5 |
-| 排查 ADB 偶发失效、Windows DNS 问题 | 中(我们自己的功能) | 低~中 | §5 |
+| Merge the upstream commits after 20260208 (new audio engine, sharp scaling, sleep improvements, PRs #111-#116) and verify each on the M22Pro | High: our version was far behind and m21 once did not build | Medium: audio, scaling and sleep need verification | 4.1 (audited in 6.1, mostly done) |
+| Verify and fix the new scaler's sharp mode on the M22Pro | Medium: picture quality | Medium: PR #116 was tested on a LOONG MAY-M21 | 2 |
+| 60 fps on the internal panel by device tree patch | High: solves tearing/frame cap, vsync possible | **High**: writes the SPI NOR (brick risk), M22Pro only; offline assessment and a more conservative patch script (writes 2 sectors) exist, see [RISK_ASSESSMENT.md](workspace/m21/other/dtb_60fps/RISK_ASSESSMENT.md) | 4.2 (done on our device) |
+| External pad for player 2 (#63) | Medium | Medium: an old branch exists, the Select+Start conflict needs solving | 4.4 |
+| Button mapping UI (today only the env file) | Low to medium | Low | 3.1 |
+| Fix the build chain: toolchain source, README, `make m21` flow | Medium: reproducibility | Low | 4.1 (done by `dockerbuild/`) |
+| Ship our USB Mode.pak with the release package | Medium | Low | 5 (done) |
+| Investigate the ADB flake and the Windows DNS problem | Medium (our own feature) | Low to medium | 5 |
 
-## 6.1 对 20260208 之后上游提交(2c7a860..HEAD,约 160 个)的审查结果(2026-10-24)
+## 6.1 Audit of the upstream commits after 20260208 (2c7a860..HEAD, about 160), 2026-10-24
 
-已在 SJGAM M22Pro 上用 adb 实测 GBA,并用 `-Wall -Warray-bounds -Wrestrict -Wformat-overflow` 等严格告警编译了 minarch/api/utils/platform/minui。
+Tested on the SJGAM M22Pro with adb on GBA, and minarch/api/utils/platform/minui were compiled with strict warnings (`-Wall -Warray-bounds -Wrestrict -Wformat-overflow` ...).
 
-**已发现并修复(都已提交):**
+**Found and fixed (all committed):**
 
-| 问题 | 来源 | 现象/风险 | 修复 |
+| Problem | Origin | Symptom/risk | Fix |
 |---|---|---|---|
-| 显示层改成 ARGB8888 且所有模式都写 32 位 | `c5d07f5`(PR #116,在 LOONG MAY-M21 上测的) | M22Pro 上 GBA 只有 30fps、音频破音 | 显示层恒为 RGB565,去掉 Sharp 选项(`NO_SHARP_SCALER`) |
-| HUD 频率恒为 0 | `getCPUusage()` 里 `a[9]` 越界写 | 换 gcc 12 后正好清零 `cur_cpu_freq` | `a[10]` |
-| HUD 字体变大变糊 | `e114217` 按画面最大边选字体 | 720x1280 画面还要被显示引擎放大 1.5 倍 | `HUD_FONT_MID_MAX 1280` 沿用 10x16 |
-| 亮度/音量不保存 | m21 `SaveSettings()` 老 bug | 每次开机回到默认值 | `O_CREAT`+写结构体+读取校验 |
-| `getCPUusage()` 里 `sprintf` 目标和参数重叠 | 上游 | 未定义行为 | 改成 `snprintf` 追加 |
-| `CPU_SPEED_SLEEP` 环境变量缺失时空指针 | m21 平台代码(`66d5cce`/睡眠改进之后新增) | 旧的 `launch.sh` 搭新二进制会崩 | 缺失时回落到 480000 |
-| 唤醒时对没初始化过的音频调 `SND_init(0,0)` | `PWR_exitSleep()` | MinUI 主界面自动休眠后唤醒,所有平台都会走到 | `sample_rate_bak>0` 才重新初始化 |
-| `PLAT_shouldWake()` 在输入设备打不开时没有 return | m21 平台代码 | 未定义行为 | 补 `return 0` |
-| `OptionQuicksave_onConfirm()` 没有 return | 上游 | 未定义行为(实际上 `PWR_powerOff()` 不返回) | 补 return |
+| Display layer changed to ARGB8888 with 32-bit writes in every mode | `c5d07f5` (PR #116, tested on a LOONG MAY-M21) | GBA at only 30 fps with crackling audio on the M22Pro | Layer always RGB565, Sharp option removed (`NO_SHARP_SCALER`) |
+| HUD frequency always 0 | `a[9]` overflow in `getCPUusage()` | With gcc 12 it zeroes `cur_cpu_freq` | `a[10]` |
+| HUD font bigger and blurry | `e114217` picks the font by the largest picture side | The 720x1280 picture is also scaled 1.5x by the display engine | `HUD_FONT_MID_MAX 1280` keeps 10x16 |
+| Brightness/volume not saved | Old m21 `SaveSettings()` bug | Defaults at every boot | `O_CREAT` + write the struct + validate on load |
+| `sprintf` with overlapping source and destination in `getCPUusage()` | Upstream | Undefined behaviour | `snprintf` appending |
+| Missing `CPU_SPEED_SLEEP` environment variable gives a null pointer | m21 platform code (added with the sleep improvements) | An old `launch.sh` with a new binary crashes | Fall back to 480000 |
+| `SND_init(0,0)` on audio that was never initialised after wake | `PWR_exitSleep()` | After MinUI's main-screen auto sleep, on all platforms | Re-init only if `sample_rate_bak>0` |
+| `PLAT_shouldWake()` has no return when the input device cannot be opened | m21 platform code | Undefined behaviour | `return 0` |
+| `OptionQuicksave_onConfirm()` has no return | Upstream | Undefined behaviour (in practice `PWR_powerOff()` does not return) | return added |
 
-**检查过、不需要改:**
-- 存档从 `.sav` 改名为 `.srm`(`292ee24`):打开游戏时会自动把旧 `.sav` 改名。注意:改名后再退回旧版 minarch 会找不到存档。
-- 更新时删除 `msettings.bin`(`66d5cce`):m21 的 `boot.sh` 已包含;配合我们加的版本校验是安全的。
-- 自动休眠 30 秒、休眠后 120 秒关机:充电时(包括 USB 供电/adb 连着)不会触发,电池供电才有;旧版也有类似行为。
-- `5f85ed8`(修关机崩溃)只改了 h700/miyoomini/my282/r36s 的平台文件,m21 的 `PLAT_quitVideo` 没有同类问题。
-- libsamplerate 依赖:`6ed7394` 声称移除,实际 m21 仍链接 `-lsamplerate` 且设备上有该库,不受影响。
+**Checked, no change needed:**
+- Saves renamed from `.sav` to `.srm` (`292ee24`): old `.sav` files are renamed when a game opens. Note that going back to an old minarch after the rename will not find the saves.
+- `msettings.bin` deleted on update (`66d5cce`): already in the m21 `boot.sh`; safe together with our version validation.
+- Auto sleep after 30 s and shutdown 120 s after sleep: not triggered while charging (including USB power / adb attached), only on battery; older versions behaved similarly.
+- `5f85ed8` (shutdown crash) only touches the h700/miyoomini/my282/r36s platform files; the m21 `PLAT_quitVideo` has no such problem.
+- libsamplerate: `6ed7394` claims to remove it, but m21 still links `-lsamplerate` and the device has the library, so nothing changes.
 
-**没有验证、仍有风险:**
-- **电池供电下的自动休眠/唤醒**没法用 adb 测(连着 adb 就是充电状态,休眠不会触发)。
-- **其它核心**:卡里只有 GBA 和 PICO-8 的游戏,其它核心(FC/SFC/MD/PS 等)没跑过新 minarch;核心 `.so` 和 Commander 仍是旧包里的。
-- **ZXS(fuse 核心)** 还没有 m21 版本,发布包里没带。
+**Not verified, still a risk:**
+- **Auto sleep/wake on battery** cannot be tested over adb (adb attached means charging).
+- **Other cores:** the card only has GBA and PICO-8 games; other cores (FC/SFC/MD/PS ...) never ran the new minarch; the core `.so` files and Commander still come from the old package.
+- **ZXS (fuse core)** has no m21 build yet and is not in the release package.
 
-**上游遗留的潜在 bug(随后也修了):**
-- `Core_updateAVInfo()` 在 `av_infonew!=NULL` 时 `memcpy(&av_info,&av_infonew,…)` 取了指针的地址,改成 `*av_infonew`(目前调用方都传 NULL)。
-- `rotateIMGScalar()` 旋转 3 的分支缺少 `y` 循环、用了未初始化的 `y`(只有标量回退路径会用到),补上循环。
-- `putInt()` 的 8 字节缓冲区装不下 11 位的 int,改成 16。
-- 大量 `sprintf` 往 256/512 字节的路径缓冲区写,路径长了会溢出(严格告警里有 64 处)。m21 的 `platform.h` 里把 `sprintf` 定义成按目标数组大小限长的 `snprintf`
-  (指针目标大小未知时仍然不限长,行为和以前一样)。改完后这类告警降为 0。这个宏只影响 m21 的构建。
+**Latent upstream bugs (also fixed afterwards):**
+- `Core_updateAVInfo()` did `memcpy(&av_info,&av_infonew,...)` with the address of the pointer when `av_infonew!=NULL`; now `*av_infonew` (all callers pass NULL today).
+- The rotation-3 branch of `rotateIMGScalar()` lacked the `y` loop and used an uninitialised `y` (only the scalar fallback path); loop added.
+- The 8-byte buffer of `putInt()` cannot hold an 11-digit int; now 16.
+- Many `sprintf` calls write into 256/512 byte path buffers and can overflow with long paths (64 places in the strict warnings). The m21 `platform.h` defines `sprintf` as an `snprintf` bounded by the destination array size (unbounded when the destination is a pointer of unknown size, as before). Such warnings are now 0. The macro only affects the m21 build.
 
-## 7. 引用
+## 6.2 Our changes on 2026-10-25
 
-- 上游:<https://github.com/Turro75/MyMinUI>;Releases:<https://github.com/Turro75/MyMinUI/releases>
-- 相关 issue:[#63](https://github.com/Turro75/MyMinUI/issues/63) [#71](https://github.com/Turro75/MyMinUI/issues/71) [#74](https://github.com/Turro75/MyMinUI/issues/74) [#75](https://github.com/Turro75/MyMinUI/issues/75) [#77](https://github.com/Turro75/MyMinUI/issues/77) [#79](https://github.com/Turro75/MyMinUI/issues/79) [#80](https://github.com/Turro75/MyMinUI/issues/80) [#48](https://github.com/Turro75/MyMinUI/issues/48) [#51](https://github.com/Turro75/MyMinUI/issues/51) [#38](https://github.com/Turro75/MyMinUI/issues/38)
-- 相关 PR:[#114](https://github.com/Turro75/MyMinUI/pull/114) [#115](https://github.com/Turro75/MyMinUI/pull/115) [#116](https://github.com/Turro75/MyMinUI/pull/116) [#111](https://github.com/Turro75/MyMinUI/pull/111)
-- 本地资料:`INSTALL.md`(SJGAM 一节)、`workspace/m21/`、`workspace/m21/other/dtb_60fps/Readme.md`、`firmware/sjgam-m22pro/`、`workspace/m21/other/usbmode/`
+All committed and deployed on our M22Pro; details in the linked documents.
+
+| Change | What | Document |
+|---|---|---|
+| CJK fonts in the package | `package.sh` overlays `BPreplayBold-unhinted.otf` and `Files.pak/res/FreeSans.ttf` | [cjkfont README](workspace/m21/other/cjkfont/README.md) |
+| `tomato` with USB boot defaults, merged onto the current `boot.sh` | Update no longer overwrites the running `tomato`, msettings reset on update, `-x tomato emulationstation` in the unzip; a wrong `tomato` on the card had disabled adb at boot | [README.md](README.md) (3b), [SD_RESTORE.md](SD_RESTORE.md) |
+| Switchable UI language | `TR()` + catalogs, first-start picker, `Tools/Language.pak`, per-pak catalogs, zh_CN for everything; the four `Toggle*` tools show their value | [I18N.md](I18N.md) |
+| Read-only SD card repair | Static `fsck.fat` build script, steps, what was found | [SD_RESTORE.md](SD_RESTORE.md) section B |
+
+Still unverified on the device: the minarch in-game menu in Chinese on every core, and every USB Mode page in Chinese (the main pages were seen).
+
+## 7. References
+
+- Upstream: <https://github.com/Turro75/MyMinUI>; releases: <https://github.com/Turro75/MyMinUI/releases>
+- Issues: [#63](https://github.com/Turro75/MyMinUI/issues/63) [#71](https://github.com/Turro75/MyMinUI/issues/71) [#74](https://github.com/Turro75/MyMinUI/issues/74) [#75](https://github.com/Turro75/MyMinUI/issues/75) [#77](https://github.com/Turro75/MyMinUI/issues/77) [#79](https://github.com/Turro75/MyMinUI/issues/79) [#80](https://github.com/Turro75/MyMinUI/issues/80) [#48](https://github.com/Turro75/MyMinUI/issues/48) [#51](https://github.com/Turro75/MyMinUI/issues/51) [#38](https://github.com/Turro75/MyMinUI/issues/38)
+- PRs: [#114](https://github.com/Turro75/MyMinUI/pull/114) [#115](https://github.com/Turro75/MyMinUI/pull/115) [#116](https://github.com/Turro75/MyMinUI/pull/116) [#111](https://github.com/Turro75/MyMinUI/pull/111)
+- Local material: `INSTALL.md` (SJGAM section), `workspace/m21/`, `workspace/m21/other/dtb_60fps/Readme.md`, `firmware/sjgam-m22pro/`, `workspace/m21/other/usbmode/`
