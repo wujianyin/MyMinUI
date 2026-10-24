@@ -61,6 +61,10 @@ cp workspace/$PLATFORM/boot/boot.sh "$B/BASE/$PLATFORM/tomato"
 # root too (boot.sh no longer overwrites them while running, see unzip -x), so no manual copy is needed
 cp workspace/$PLATFORM/boot/boot.sh "$B/BASE/emulationstation"
 cp workspace/$PLATFORM/boot/boot.sh "$B/BASE/tomato"
+# tomato is what the SJGAM M22Pro really boots: use the variant with the USB Mode boot defaults
+# (adb/storage/network/serial from usb_boot_mode.cfg). Without it adb is not started at boot.
+cp workspace/$PLATFORM/other/usbmode/tomato.m21 "$B/BASE/tomato"
+cp workspace/$PLATFORM/other/usbmode/tomato.m21 "$B/BASE/$PLATFORM/tomato"
 cp workspace/$PLATFORM/boot/*.png "$B/BASE/$PLATFORM/"
 cp -R workspace/$PLATFORM/boot/libmusl "$B/BASE/$PLATFORM/"
 cp -R workspace/$PLATFORM/boot/binmusl "$B/BASE/$PLATFORM/"

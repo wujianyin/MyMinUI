@@ -42,4 +42,4 @@ printf 'ncm\n'             > /.userdata/m21/usb_nettype
 
 ## 6. 恢复后核对(adb)
 
-`ref_fps:60`、`/mnt/SDCARD/tomato` 为 11605 字节、`Tools/m21/USB Mode.pak` 存在、`usb_boot_mode.cfg` 为 `adb_only/net/-`、`system.cfg` 里是 `Lenient`、`/sys/kernel/config/usb_gadget/g1/functions` 有 `ffs.adb` 和 `ncm.usb0`、`usb0` 为 `192.168.7.1`。
+`ref_fps:60`、`/mnt/SDCARD/tomato` 为 11749 字节、`Tools/m21/USB Mode.pak` 存在、`usb_boot_mode.cfg` 为 `adb_only/net/-`、`system.cfg` 里是 `Lenient`、`/sys/kernel/config/usb_gadget/g1/functions` 有 `ffs.adb` 和 `ncm.usb0`、`usb0` 为 `192.168.7.1`。
