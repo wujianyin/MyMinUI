@@ -52,6 +52,10 @@ cp "$BIN/show.elf" "$BIN/overclock.elf" "$S/bin/"
 mkdir -p "$B/BASE/$PLATFORM"
 cp workspace/$PLATFORM/boot/boot.sh "$B/BASE/$PLATFORM/emulationstation"
 cp workspace/$PLATFORM/boot/boot.sh "$B/BASE/$PLATFORM/tomato"
+# the release zip is meant to be extracted straight onto the FAT32 card: tomato/emulationstation at the
+# root too (boot.sh no longer overwrites them while running, see unzip -x), so no manual copy is needed
+cp workspace/$PLATFORM/boot/boot.sh "$B/BASE/emulationstation"
+cp workspace/$PLATFORM/boot/boot.sh "$B/BASE/tomato"
 cp workspace/$PLATFORM/boot/*.png "$B/BASE/$PLATFORM/"
 cp -R workspace/$PLATFORM/boot/libmusl "$B/BASE/$PLATFORM/"
 cp -R workspace/$PLATFORM/boot/binmusl "$B/BASE/$PLATFORM/"
@@ -93,6 +97,6 @@ cp -fR "$B/EXTRAS/"* "$B/FULL/"
 mkdir -p "$REPO/releases"
 OUT="$REPO/releases/$RELEASE_NAME-$PLATFORM.zip"
 rm -f "$OUT"
-(cd "$B/FULL" && zip -qr "$OUT" Bios Emus Roms Cheats Tools m21 MinUI.zip MANUAL.txt)
+(cd "$B/FULL" && zip -qr "$OUT" Bios Emus Roms Cheats Tools m21 emulationstation tomato MinUI.zip MANUAL.txt)
 ls -la "$OUT"
 echo "$RELEASE_NAME" > "$B/latest.txt"

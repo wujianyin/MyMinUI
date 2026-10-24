@@ -40,7 +40,7 @@ if [ -f ${SDCARD_PATH}/My${FWNAME}-*-${PLATFORM}.zip ]; then
 	PID=$!
 #	echo $PID >>  ${SDCARD_PATH}/ciao.txt
 	#echo "Found Release file $NEWFILE ! ACTION = $ACTION" >> $LOGFILE
-        ${SDCARD_PATH}/${PLATFORM}/binmusl/unzip -o $NEWFILE -d $SDCARD_PATH -x "m21/*" #&>> $LOGFILE
+        ${SDCARD_PATH}/${PLATFORM}/binmusl/unzip -o $NEWFILE -d $SDCARD_PATH -x "m21/*" tomato emulationstation #&>> $LOGFILE
 	sync
 
 	#remove useless dirs

@@ -29,6 +29,7 @@ BASEZIP=/path/MyMinUI-20260208b-0-m21.zip sh workspace/m21/other/dockerbuild/pac
   这些现在在本机编不了(核心要大内存加联网克隆源码,Commander 是 C++),和上一个发布包同一来源。
 - 不含 `ZXS.pak`(fuse 核心还没有 m21 版)。
 - 含我们 fork 自己的 `USB Mode.pak`(在 skeleton 里)。
+- 包根目录额外放了一份 `tomato` 和 `emulationstation`(和 `m21/` 里的相同,都是 `boot/boot.sh`),把 zip 直接解压到 FAT32 卡根目录即可,不用手动复制;`boot.sh` 里的 `unzip` 加了 `-x "m21/*" tomato emulationstation`,更新时不会覆盖正在运行的脚本。
 - 包布局和上游 20260208b 的 m21 包一致:`Bios Cheats Emus Roms Tools m21 MinUI.zip MANUAL.txt`(上游旧包是 `README.txt`,新 makefile 已改成 `MANUAL.txt`)。
 
 ## 已知问题(上游代码里的 bug,未修)

@@ -117,6 +117,10 @@ Once installation process is completed press the PWR button to shutdown the devi
 # SJGAM M21/M22pro:
 
 Format as FAT32 (it is also supported exFAT if You like) a micro sdcard with enough space to contains all Your games, the volume name assigned to the partition doesn't matter.
+
+**Simple method (builds from this fork, 20261024b and later):** the release zip already contains `tomato` and `emulationstation` in its root, so just extract the whole zip to the root of the FAT32 partition (no manual copying, do not keep the zip itself on the card) and boot. The installer is `MinUI.zip`, which is extracted to the card in the first boot. When updating later, put the new release zip on the card as a file (leave it zipped): the boot script no longer overwrites the running `tomato`/`emulationstation`, extract those two from the new zip by hand if they changed.
+
+**Classic method (upstream releases):**
 in the release file (i.e. MyMinUI-YYYYMMDDb-0-m21.zip) there is a folder called "m21" copy that folder as is in the FAT32 partition created above.
 Move (or copy) the file m21/emulationstation and m21/tomato to the root of the FAT32 partition created above.
 Copy also the whole release zip file (leave it zipped) in the FAT32 partition created above.
