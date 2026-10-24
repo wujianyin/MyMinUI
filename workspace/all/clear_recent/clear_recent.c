@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
     GFX_clear(screen);
     // Show confirmation message
     // GFX_blitHardwareGroup(screen, show_setting);
-    GFX_blitMessage(font.large, "Are you sure you want to clear\nRecently Played?", screen, &(SDL_Rect){0,0,screen->w,screen->h});
+    GFX_blitMessage(font.large, (char*)TR("Are you sure you want to clear\nRecently Played?"), screen, &(SDL_Rect){0,0,screen->w,screen->h});
     GFX_blitButtonGroup((char*[]){ "B","CANCEL", "A","CLEAR", NULL },0, screen, 1, 0);
 
     GFX_flip(screen);

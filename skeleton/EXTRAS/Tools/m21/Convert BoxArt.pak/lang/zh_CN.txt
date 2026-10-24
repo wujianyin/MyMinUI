@@ -1,0 +1,6 @@
+#name: 简体中文
+# Strings of this tool only. Format: English<TAB>translation, \n = line break.
+Convert BoxArt	转换封面
+Converted %d/%d\n%s	已转换 %d/%d\n%s
+Skipped %d/%d\n%s	已跳过 %d/%d\n%s
+Press A to Exit	按 A 退出

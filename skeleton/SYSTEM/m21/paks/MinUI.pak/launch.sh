@@ -90,6 +90,11 @@ cd $(dirname "$0")
 EXEC_PATH="/tmp/minui_exec"
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH" && sync
+
+# first start (no language chosen yet): let the user pick one before the desktop is shown
+if [ ! -f "$SHARED_USERDATA_PATH/language" ] && [ -f "$SYSTEM_PATH/bin/language.elf" ]; then
+	language.elf --first > $LOGS_PATH/language.txt 2>&1
+fi
 while [ -f "$EXEC_PATH" ]; do
 	echo $CPU_SPEED_GAME > "${GOVERNOR_CPUSPEED_PATH}"
 	minui.elf > $LOGS_PATH/minui.txt 2>&1

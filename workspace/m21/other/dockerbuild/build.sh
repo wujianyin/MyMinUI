@@ -37,6 +37,8 @@ build clock          -Os /w/all/clock/clock.c $COMMON
 build minput         -Os /w/all/minput/minput.c $COMMON
 build clear_recent   -Os /w/all/clear_recent/clear_recent.c $COMMON
 build convertboxart  -Os $LRC /w/all/convertboxart/convertboxart.c $COMMON
+build language      -Os /w/all/language/language.c $COMMON
+build usbmode       -Os -I/w/m21/other/usbmode /w/m21/other/usbmode/usbmode.c $COMMON
 build show           -Ofast $LRC /w/m21/show/show.c $COMMON
 echo "=== overclock"
 $CC $ARCH -Os -fno-pie -DPLATFORM=\"m21\" -I. /w/m21/overclock/overclock.c /o/crt.o -nostartfiles -no-pie -L/t/m21_glibc -l:libdl.so.2 -l:librt.so.1 -l:libc.so.6 -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3 -Wl,--gc-sections -o /o/overclock.elf > /o/overclock.log 2>&1 && echo "OK" || { echo FAIL; head /o/overclock.log; }

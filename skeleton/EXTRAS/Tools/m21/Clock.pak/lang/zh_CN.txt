@@ -1,0 +1,5 @@
+#name: 简体中文
+# Strings of this tool only. Format: English<TAB>translation, \n = line break.
+Clock	时钟
+12 HOUR	12 小时制
+24 HOUR	24 小时制

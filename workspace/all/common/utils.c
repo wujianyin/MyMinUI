@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include "defines.h"
 #include "utils.h"
 #include "api.h"
@@ -496,3 +497,203 @@ void wrapString(char *string, size_t max_len, size_t max_lines) {
 	truncateString(line, max_len);
 }
 //end cheat support
+
+///////////////////////////////////////
+// i18n (see utils.h)
+
+#define I18N_LANGUAGE_PATH SHARED_USERDATA_PATH "/language"
+#define I18N_LANG_DIR RES_PATH "/lang"
+
+typedef struct { char* key; char* val; } I18N_Entry;
+static I18N_Entry* i18n_tab = NULL; // open addressing, size is a power of two
+static int i18n_cap = 0;
+static int i18n_count = 0;
+static char i18n_code[I18N_CODE_MAX] = "en";
+static int i18n_chosen = 0;
+
+static unsigned i18n_hash(const char* s) {
+	unsigned h = 2166136261u;
+	while (*s) { h ^= (unsigned char)*s++; h *= 16777619u; }
+	return h;
+}
+static void i18n_put(char* key, char* val); // takes ownership of key and val
+static void i18n_grow(void) {
+	I18N_Entry* old = i18n_tab;
+	int oldcap = i18n_cap;
+	i18n_cap = oldcap ? oldcap * 2 : 1024;
+	i18n_tab = calloc(i18n_cap, sizeof(I18N_Entry));
+	i18n_count = 0;
+	for (int i = 0; i < oldcap; i++) if (old[i].key) i18n_put(old[i].key, old[i].val);
+	free(old);
+}
+static void i18n_put(char* key, char* val) {
+	if (!i18n_cap || (i18n_count + 1) * 2 > i18n_cap) i18n_grow();
+	unsigned m = i18n_cap - 1;
+	unsigned i = i18n_hash(key) & m;
+	while (i18n_tab[i].key) {
+		if (strcmp(i18n_tab[i].key, key) == 0) { // later catalogs (paks) override earlier ones
+			free(i18n_tab[i].val); free(key);
+			i18n_tab[i].val = val;
+			return;
+		}
+		i = (i + 1) & m;
+	}
+	i18n_tab[i].key = key;
+	i18n_tab[i].val = val;
+	i18n_count++;
+}
+static char* i18n_unescape(const char* s, size_t len) {
+	char* out = malloc(len + 1);
+	size_t o = 0;
+	for (size_t i = 0; i < len; i++) {
+		if (s[i] == '\\' && i + 1 < len) {
+			i++;
+			out[o++] = s[i] == 'n' ? '\n' : s[i] == 't' ? '\t' : s[i];
+		}
+		else out[o++] = s[i];
+	}
+	out[o] = '\0';
+	return out;
+}
+static void i18n_load(const char* path) {
+	FILE* f = fopen(path, "r");
+	if (!f) return;
+	char line[2048];
+	while (fgets(line, sizeof(line), f)) {
+		size_t len = strlen(line);
+		while (len && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = '\0';
+		if (!len || line[0] == '#') continue;
+		char* tab = strchr(line, '\t');
+		if (!tab || tab == line) continue;
+		if (!tab[1]) continue; // empty translation = untranslated
+		i18n_put(i18n_unescape(line, tab - line), i18n_unescape(tab + 1, len - (tab + 1 - line)));
+	}
+	fclose(f);
+}
+static int i18n_validCode(const char* c) {
+	if (!c[0]) return 0;
+	for (; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '_' || *c == '-')) return 0;
+	return 1;
+}
+
+void I18N_init(void) {
+	char buf[I18N_CODE_MAX] = "";
+	i18n_chosen = 0;
+	strcpy(i18n_code, "en");
+	if (exists(I18N_LANGUAGE_PATH)) {
+		getFile(I18N_LANGUAGE_PATH, buf, sizeof(buf));
+		trimTrailingNewlines(buf);
+		char* code = trim(buf);
+		if (i18n_validCode(code)) { strcpy(i18n_code, code); i18n_chosen = 1; }
+	}
+	for (int i = 0; i < i18n_cap; i++) { free(i18n_tab[i].key); free(i18n_tab[i].val); }
+	free(i18n_tab);
+	i18n_tab = NULL; i18n_cap = 0; i18n_count = 0;
+	if (strcmp(i18n_code, "en") == 0) return; // English is the source language
+
+	char path[MAX_PATH];
+	snprintf(path, sizeof(path), I18N_LANG_DIR "/%s.txt", i18n_code);
+	i18n_load(path);
+	const char* pak = getenv("PAK_DIR");
+	snprintf(path, sizeof(path), "%s/lang/%s.txt", pak && pak[0] ? pak : ".", i18n_code);
+	i18n_load(path);
+}
+
+const char* I18N_get(const char* s) {
+	if (!s || !i18n_cap) return s;
+	unsigned m = i18n_cap - 1;
+	unsigned i = i18n_hash(s) & m;
+	while (i18n_tab[i].key) {
+		if (strcmp(i18n_tab[i].key, s) == 0) return i18n_tab[i].val;
+		i = (i + 1) & m;
+	}
+	return s;
+}
+#define I18N_PAKNAME_CACHE 128
+static struct { char* pak; char* name; char* out; } i18n_pakcache[I18N_PAKNAME_CACHE];
+static int i18n_pakcache_n = 0;
+const char* I18N_getPakName(const char* pak_path, const char* name) {
+	if (!i18n_cap || !pak_path || !name) return I18N_get(name); // English, or nothing loaded
+	for (int i = 0; i < i18n_pakcache_n; i++)
+		if (strcmp(i18n_pakcache[i].pak, pak_path) == 0 && strcmp(i18n_pakcache[i].name, name) == 0) return i18n_pakcache[i].out;
+	char path[MAX_PATH], line[2048];
+	const char* res = NULL;
+	snprintf(path, sizeof(path), "%s/lang/%s.txt", pak_path, i18n_code);
+	FILE* f = fopen(path, "r");
+	if (f) {
+		size_t nlen = strlen(name);
+		while (fgets(line, sizeof(line), f)) {
+			if (line[0] == '#') continue;
+			char* tab = strchr(line, '\t');
+			if (!tab || (size_t)(tab - line) != nlen || strncmp(line, name, nlen) != 0 || !tab[1]) continue;
+			size_t len = strlen(tab + 1);
+			while (len && (tab[len] == '\n' || tab[len] == '\r')) tab[len--] = '\0';
+			res = i18n_unescape(tab + 1, strlen(tab + 1)); // leaked on purpose, it is cached below
+			break;
+		}
+		fclose(f);
+	}
+	if (!res) return I18N_get(name);
+	if (i18n_pakcache_n < I18N_PAKNAME_CACHE) {
+		i18n_pakcache[i18n_pakcache_n].pak = strdup(pak_path);
+		i18n_pakcache[i18n_pakcache_n].name = strdup(name);
+		i18n_pakcache[i18n_pakcache_n].out = (char*)res;
+		i18n_pakcache_n++;
+	}
+	return res;
+}
+const char* I18N_getLanguage(void) { return i18n_code; }
+int I18N_isLanguageChosen(void) { return i18n_chosen; }
+
+int I18N_listLanguages(I18N_Lang* out, int max) {
+	int n = 0;
+	if (max < 1) return 0;
+	strcpy(out[n].code, "en");
+	strcpy(out[n].name, "English");
+	n++;
+	DIR* dir = opendir(I18N_LANG_DIR);
+	if (!dir) return n;
+	struct dirent* ent;
+	while ((ent = readdir(dir)) && n < max) {
+		size_t len = strlen(ent->d_name);
+		if (len < 5 || len - 4 >= I18N_CODE_MAX || strcmp(ent->d_name + len - 4, ".txt") != 0) continue;
+		char code[I18N_CODE_MAX];
+		memcpy(code, ent->d_name, len - 4);
+		code[len - 4] = '\0';
+		if (!i18n_validCode(code) || strcmp(code, "en") == 0) continue;
+		strcpy(out[n].code, code);
+		strcpy(out[n].name, code); // fallback: show the code
+		char path[MAX_PATH], line[256];
+		snprintf(path, sizeof(path), I18N_LANG_DIR "/%s", ent->d_name);
+		FILE* f = fopen(path, "r");
+		if (f) {
+			while (fgets(line, sizeof(line), f)) {
+				if (strncmp(line, "#name:", 6) == 0) {
+					trimTrailingNewlines(line);
+					char* name = trim(line + 6);
+					if (name[0]) snprintf(out[n].name, I18N_NAME_MAX, "%s", name);
+					break;
+				}
+				if (line[0] != '#') break;
+			}
+			fclose(f);
+		}
+		n++;
+	}
+	closedir(dir);
+	// keep "en" first, sort the rest by code so the order is stable
+	for (int i = 1; i < n; i++)
+		for (int j = i + 1; j < n; j++)
+			if (strcmp(out[j].code, out[i].code) < 0) { I18N_Lang t = out[i]; out[i] = out[j]; out[j] = t; }
+	return n;
+}
+
+int I18N_setLanguage(const char* code) {
+	if (!i18n_validCode(code)) return -1;
+	mkdir(SHARED_USERDATA_PATH, 0777); // fails harmlessly when it exists
+	char buf[I18N_CODE_MAX + 2];
+	snprintf(buf, sizeof(buf), "%s\n", code);
+	putFile(I18N_LANGUAGE_PATH, buf);
+	sync();
+	return 0;
+}

@@ -16,6 +16,7 @@ export LD_LIBRARY_PATH="/mnt/SDCARD/.system/m21/lib:/usr/lib:/lib:$LD_LIBRARY_PA
 
 PAK_DIR="$(cd "$(dirname "$0")" && pwd)"
 export USBMODE_PAK_DIR="$PAK_DIR"
+export PAK_DIR   # i18n: pak-specific strings are read from $PAK_DIR/lang/
 cp -f "$PAK_DIR/umsd.elf" /tmp/umsd.elf
 cp -f "$PAK_DIR/usbmode.elf" /tmp/usbmode.elf
 chmod +x /tmp/umsd.elf /tmp/usbmode.elf

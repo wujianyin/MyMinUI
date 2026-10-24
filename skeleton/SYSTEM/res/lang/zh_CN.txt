@@ -1,0 +1,167 @@
+#name: 简体中文
+# Shared strings (MinUI desktop, in-game menu, button hints). One "English<TAB>translation" per line;
+# \n is a line break. Keep printf placeholders (%s %i %d %llu) exactly as in the English text.
+# Strings that belong to a single tool live in that tool's own pak: Tools/m21/<name>.pak/lang/zh_CN.txt
+
+# ---- button hints (shown next to the A/B/X/Y/MENU buttons) ----
+BACK	返回
+OKAY	确定
+OK	确定
+OPEN	打开
+RUN	运行
+RUN2	运行
+RSM	继续
+FAV	收藏
+HIDE	隐藏
+INFO	信息
+MODE	模式
+SLP	休眠
+OFF	关机
+BOXART	封面
+CANCEL	取消
+CLEAR	清除
+SET	设置
+SELECT	选择
+BRIGHTNESS	亮度
+VOLUME	音量
+CHANGE	切换
+TOGGLE	开关
+SCROLL	滚动
+PAGE	翻页
+ACTIONS	操作
+DETAILS	详情
+QUIT	退出
+
+# ---- MinUI desktop ----
+Sleep	休眠
+Power off	关机
+Left/Right	左/右
+Tools	工具
+Main Menu	主菜单
+Empty folder	空文件夹
+Empty Slot	空存档位
+No Preview	无预览
+Recently Played	最近游玩
+Collections	收藏夹
+Favorites	喜爱
+HiddenRoms	隐藏游戏
+Release	版本
+Commit	提交
+Model	型号
+Mode	模式
+IP Addr	IP 地址
+Standard	标准
+Simple (no Setting)	简洁(无设置栏)
+Fancy (Boxart + State)	精美(封面+存档预览)
+Disc %i	光盘 %i
+Quicksave created,\npowering off	已创建快速存档,\n正在关机
+Powering off	正在关机
+Quicksave created,\npower off now	已创建快速存档,\n现在可以关机
+Power off now	现在可以关机
+
+# ---- in-game menu ----
+Continue	继续游戏
+Save	保存进度
+Load	读取进度
+Options	选项
+Reset	重置
+Quit	退出游戏
+Frontend	前端
+Emulator	模拟器
+Cheats	金手指
+Controls	按键设置
+Shortcuts	快捷键
+Save Changes	保存设置
+
+# ---- Frontend options ----
+Screen Scaling	画面缩放
+Max Upscale	最大放大倍数
+Screen Effect	画面特效
+Screen Scaler	缩放算法
+Prevent Tearing	防撕裂
+CPU Speed	CPU 速度
+Thread Core	核心线程化
+Debug HUD	调试信息
+Max FF Speed	最大快进速度
+Play as Player	玩家
+Off	关
+On	开
+Native	原始整数倍
+Aspect	保持比例
+Extended	扩展
+Fullscreen	全屏
+Force 4:3	强制 4:3
+Force 3:2	强制 3:2
+None	无
+Line	扫描线
+Grid	网格
+Near	最近邻
+Sharp	锐利
+Lenient	宽松
+Strict	严格
+Powersave	省电
+Normal	正常
+Performance	性能
+Max	最高
+DualShock	DualShock
+NONE	无
+Native uses integer scaling.\nAspect uses core reported aspect ratio.\nExtended is like aspect but the it extends the image to fit 3/4 of screen.\nFullscreen has non-squarepixels.\nForce 4:3 and 3:2 guess what?	原始:整数倍缩放。\n保持比例:使用核心报告的画面比例。\n扩展:类似保持比例,但把画面拉伸到约 3/4 屏幕。\n全屏:拉伸铺满(像素非正方形)。\n强制 4:3 / 3:2:按该比例显示。
+Select the maximum upscale factor.	选择最大放大倍数。
+Grid simulates an LCD grid.\nLine simulates CRT scanlines.\nEffects usually look best at native scaling.	网格:模拟液晶像素网格。\n扫描线:模拟 CRT 扫描线。\n特效在原始整数倍缩放下效果最好。
+Near uses nearest neighbor sampling.\nSharp is not available on this device.	最近邻:最近邻采样。\n本设备不支持锐利算法。
+Sharp uses bilinear sharp sampling\nNear uses nearest neighbor sampling (forced when scaling=native).	锐利:双线性锐化采样。\n最近邻:最近邻采样(原始缩放时强制使用)。
+Wait for vsync before drawing the next frame.\nLenient only waits when within frame budget.\nStrict always waits.	绘制下一帧前等待垂直同步。\n宽松:仅在帧时间允许时等待。\n严格:始终等待。
+Over- or underclock the CPU to prioritize\npure performance or power savings.	超频或降频 CPU,\n在性能与省电之间取舍。
+Move emulation to a thread.\nPrevents audio crackle but may\ncause dropped frames.	把模拟放到独立线程。\n可避免声音爆音,\n但可能掉帧。
+Show frames per second, cpu load,\nresolution, and scaler information.	显示帧率、CPU 负载、\n分辨率和缩放信息。
+Fast forward will not exceed the\nselected speed (but may be less\ndepending on game and emulator).	快进不会超过所选速度\n(实际可能更低,\n取决于游戏和模拟器)。
+Set the current player controller\ncan be changed during the game\ndepending on game and emulator.	设置当前玩家手柄,\n游戏中也可切换\n(取决于游戏和模拟器)。
+
+# ---- Controls / shortcuts ----
+Press A to set and X to clear.\nSupports single button and MENU+button.	按 A 设置,按 X 清除。\n支持单键和 MENU+按键。
+Press A to set and X to clear.	按 A 设置,按 X 清除。
+MapABXYtoRightStick	ABXY 映射到右摇杆
+Map ABXY buttons to right stick.	把 ABXY 按键映射到右摇杆。
+MapLeftSticktoDPad	左摇杆映射到十字键
+Map left stick to DPad buttons.	把左摇杆映射到十字键。
+Controller	手柄类型
+Select the type of controller.	选择手柄类型。
+Up	上
+Down	下
+Left	左
+Right	右
+A Button	A 键
+B Button	B 键
+X Button	X 键
+Y Button	Y 键
+Start	开始
+Select	选择
+L1 Button	L1 键
+R1 Button	R1 键
+L2 Button	L2 键
+R2 Button	R2 键
+L3 Button	L3 键
+R3 Button	R3 键
+Save State	即时存档
+Load State	即时读档
+Reset Game	重置游戏
+Save & Quit	存档并退出
+Cycle Scaling	切换缩放
+Cycle Effect	切换特效
+Toggle FF	切换快进
+Hold FF	按住快进
+
+# ---- Save changes / messages ----
+Using defaults.	当前使用默认设置。
+Using console config.	当前使用主机通用设置。
+Using game config.	当前使用本游戏设置。
+Save for console	保存为主机通用设置
+Save for game	保存为本游戏设置
+Restore defaults	恢复默认设置
+Saved for console.	已保存为主机通用设置。
+Saved for game.	已保存为本游戏设置。
+Restored console defaults.	已恢复主机默认设置。
+Restored defaults.	已恢复默认设置。
+This core has no options.	此核心没有选项。
+No cheat file loaded.\n\n	未加载金手指文件。\n\n
+

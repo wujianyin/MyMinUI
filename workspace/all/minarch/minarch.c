@@ -3954,7 +3954,7 @@ static int Menu_messageWithFont(char* message, char** pairs, TTF_Font* f) {
 
 
 		GFX_clear(screen);
-		GFX_blitMessage(f, message, screen, &(SDL_Rect){SCALE1(PADDING),SCALE1(PADDING),screen->w-SCALE1(2*PADDING),screen->h-SCALE1(PILL_SIZE+PADDING)});
+		GFX_blitMessage(f, (char*)TR(message), screen, &(SDL_Rect){SCALE1(PADDING),SCALE1(PADDING),screen->w-SCALE1(2*PADDING),screen->h-SCALE1(PILL_SIZE+PADDING)});
 		GFX_blitButtonGroup(pairs, 0, screen, 1, fancy_mode);
 		GFX_flip(screen);
 		dirty = 0;
@@ -3979,7 +3979,7 @@ static int Menu_message(char* message, char** pairs) {
 		
 		if (dirty) {
 			GFX_clear(screen);
-			GFX_blitMessage(font.medium, message, screen, &(SDL_Rect){0,SCALE1((PADDING - (PADDING*fancy_mode))),screen->w,screen->h-SCALE1(PILL_SIZE+(PADDING - (PADDING*fancy_mode)))});
+			GFX_blitMessage(font.medium, (char*)TR(message), screen, &(SDL_Rect){0,SCALE1((PADDING - (PADDING*fancy_mode))),screen->w,screen->h-SCALE1(PILL_SIZE+(PADDING - (PADDING*fancy_mode)))});
 			GFX_blitButtonGroup(pairs, 0, screen, 1, fancy_mode);
 			GFX_flip(screen);
 			GFX_pan();
@@ -4490,7 +4490,7 @@ static int OptionCheats_openMenu(MenuList* list, int i) {
 		char cheats_path[CHEAT_MAX_LIST_LENGTH] = {0};
 
 		// prepend title
-		strcat(cheats_path, "No cheat file loaded.\n\n");
+		strcat(cheats_path, TR("No cheat file loaded.\n\n"));
 
 		for (int i = 0; i < count; i++) {
 			char* p = basename(paths[i]);
@@ -4712,7 +4712,7 @@ static int Menu_options(MenuList* list) {
 					for (int i=0; i<count; i++) {
 						MenuItem* item = &items[i];
 						int w = 0;
-						TTF_SizeUTF8(font.small, item->name, &w, NULL);
+						TTF_SizeUTF8(font.small, TR(item->name), &w, NULL);
 						w += SCALE1(OPTION_PADDING*2);
 						if (w>mw) mw = w;
 					}
@@ -4731,7 +4731,7 @@ static int Menu_options(MenuList* list) {
 					if (j==selected_row) {
 						// move out of conditional if centering
 						int w = 0;
-						TTF_SizeUTF8(font.small, item->name, &w, NULL);
+						TTF_SizeUTF8(font.small, TR(item->name), &w, NULL);
 						w += SCALE1(OPTION_PADDING*2);
 						
 						GFX_blitPill(ASSET_BUTTON, screen, &(SDL_Rect){
@@ -4742,9 +4742,9 @@ static int Menu_options(MenuList* list) {
 						});
 						text_color = COLOR_BLACK;
 						
-						if (item->desc) desc = item->desc;
+						if (item->desc) desc = (char*)TR(item->desc);
 					}
-					text = TTF_RenderUTF8_Blended(font.small, item->name, text_color);
+					text = TTF_RenderUTF8_Blended(font.small, TR(item->name), text_color);
 					SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){
 						ox+SCALE1(OPTION_PADDING),
 						oy+SCALE1((j*BUTTON_SIZE)+1)
@@ -4777,7 +4777,7 @@ static int Menu_options(MenuList* list) {
 					}
 					
 					if (item->value>=0) {
-						text = TTF_RenderUTF8_Blended(font.tiny, item->values[item->value], COLOR_WHITE); // always white
+						text = TTF_RenderUTF8_Blended(font.tiny, TR(item->values[item->value]), COLOR_WHITE); // always white
 						SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){
 							ox + mw - text->w - SCALE1(OPTION_PADDING),
 							oy+SCALE1((j*BUTTON_SIZE)+3)
@@ -4789,7 +4789,7 @@ static int Menu_options(MenuList* list) {
 					if (j==selected_row) {
 						// white pill
 						int w = 0;
-						TTF_SizeUTF8(font.small, item->name, &w, NULL);
+						TTF_SizeUTF8(font.small, TR(item->name), &w, NULL);
 						w += SCALE1(OPTION_PADDING*2);
 						GFX_blitPill(ASSET_BUTTON, screen, &(SDL_Rect){
 							ox,
@@ -4799,9 +4799,9 @@ static int Menu_options(MenuList* list) {
 						});
 						text_color = COLOR_BLACK;
 						
-						if (item->desc) desc = item->desc;
+						if (item->desc) desc = (char*)TR(item->desc);
 					}
-					text = TTF_RenderUTF8_Blended(font.small, item->name, text_color);
+					text = TTF_RenderUTF8_Blended(font.small, TR(item->name), text_color);
 					SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){
 						ox+SCALE1(OPTION_PADDING),
 						oy+SCALE1((j*BUTTON_SIZE)+1)
@@ -4819,13 +4819,13 @@ static int Menu_options(MenuList* list) {
 						int w = 0;
 						int lw = 0;
 						int rw = 0;
-						TTF_SizeUTF8(font.small, item->name, &lw, NULL);
+						TTF_SizeUTF8(font.small, TR(item->name), &lw, NULL);
 						
 						// every value list in an input table is the same
 						// so only calculate rw for the first item...
 						if (!mrw || type!=MENU_INPUT) {
 							for (int j=0; item->values[j]; j++) {
-								TTF_SizeUTF8(font.tiny, item->values[j], &rw, NULL);
+								TTF_SizeUTF8(font.tiny, TR(item->values[j]), &rw, NULL);
 								if (lw+rw>w) w = lw+rw;
 								if (rw>mrw) mrw = rw;
 							}
@@ -4859,7 +4859,7 @@ static int Menu_options(MenuList* list) {
 						
 						// white pill
 						int w = 0;
-						TTF_SizeUTF8(font.small, item->name, &w, NULL);
+						TTF_SizeUTF8(font.small, TR(item->name), &w, NULL);
 						w += SCALE1(OPTION_PADDING*2);
 						GFX_blitPill(ASSET_BUTTON, screen, &(SDL_Rect){
 							ox,
@@ -4869,9 +4869,9 @@ static int Menu_options(MenuList* list) {
 						});
 						text_color = COLOR_BLACK;
 						
-						if (item->desc) desc = item->desc;
+						if (item->desc) desc = (char*)TR(item->desc);
 					}
-					text = TTF_RenderUTF8_Blended(font.small, item->name, text_color);
+					text = TTF_RenderUTF8_Blended(font.small, TR(item->name), text_color);
 					SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){
 						ox+SCALE1(OPTION_PADDING),
 						oy+SCALE1((j*BUTTON_SIZE)+1)
@@ -4882,7 +4882,7 @@ static int Menu_options(MenuList* list) {
 						// buh
 					}
 					else if (item->value>=0) {
-						text = TTF_RenderUTF8_Blended(font.tiny, item->values[item->value], COLOR_WHITE); // always white
+						text = TTF_RenderUTF8_Blended(font.tiny, TR(item->values[item->value]), COLOR_WHITE); // always white
 						SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){
 							ox + mw - text->w - SCALE1(OPTION_PADDING),
 							oy+SCALE1((j*BUTTON_SIZE)+3)
@@ -4901,7 +4901,7 @@ static int Menu_options(MenuList* list) {
 				if (end<count) GFX_blitAsset(ASSET_SCROLL_DOWN, NULL, screen, &(SDL_Rect){ox, screen->h - SCALE1((PADDING - (PADDING*fancy_mode)) + PILL_SIZE + BUTTON_SIZE) + oy});
 			}
 			
-			if (!desc && list->desc) desc = list->desc;
+			if (!desc && list->desc) desc = (char*)TR(list->desc);
 			
 			if (desc) {
 				int w,h;
@@ -5125,13 +5125,13 @@ static void Menu_loop(void) {
 		getDisplayName(game.name, rom_name);
 	}
 	int rom_disc = -1;
-	char disc_name[16];
+	char disc_name[32];
 	if (menu.total_discs) {
 		if (coreDiscManaged) {
 			menu.disc = disk_control_ext.get_image_index();
 		}		
 		rom_disc = menu.disc;
-		sprintf(disc_name, "Disc %i", menu.disc+1);
+		snprintf(disc_name, sizeof(disc_name), TR("Disc %i"), menu.disc+1);
 	}
 		
 	int selected = 0; // resets every launch
@@ -5166,7 +5166,7 @@ static void Menu_loop(void) {
 				menu.disc -= 1;
 				if (menu.disc<0) menu.disc += menu.total_discs;
 				dirty = 1;
-				sprintf(disc_name, "Disc %i", menu.disc+1);
+				snprintf(disc_name, sizeof(disc_name), TR("Disc %i"), menu.disc+1);
 			}
 			else if (selected==ITEM_SAVE || selected==ITEM_LOAD) {
 				menu.slot -= 1;
@@ -5179,7 +5179,7 @@ static void Menu_loop(void) {
 				menu.disc += 1;
 				if (menu.disc==menu.total_discs) menu.disc -= menu.total_discs;
 				dirty = 1;
-				sprintf(disc_name, "Disc %i", menu.disc+1);
+				snprintf(disc_name, sizeof(disc_name), TR("Disc %i"), menu.disc+1);
 			}
 			else if (selected==ITEM_SAVE || selected==ITEM_LOAD) {
 				menu.slot += 1;
@@ -5312,7 +5312,7 @@ static void Menu_loop(void) {
 			// list
 			oy = (((DEVICE_HEIGHT / FIXED_SCALE) - ((PADDING - (PADDING*fancy_mode))* 2)) - (MENU_ITEM_COUNT * PILL_SIZE)) / 2;
 			for (int i=0; i<MENU_ITEM_COUNT; i++) {
-				char* item = menu.items[i];
+				char* item = (char*)TR(menu.items[i]);
 				SDL_Color text_color = COLOR_WHITE;
 				
 				if (i==selected) {
@@ -5386,7 +5386,7 @@ static void Menu_loop(void) {
 					if (!bmp) {
 						SDL_Rect preview_rect = {ox,oy,hw,hh};
 						SDL_FillRect(screen, &preview_rect, 0);
-						GFX_blitMessage(font.large, "No Preview", screen, &preview_rect);
+						GFX_blitMessage(font.large, (char*)TR("No Preview"), screen, &preview_rect);
 					} else {
 						SDL_Surface* preview = zoomSurface(bmp, (1.0 * hw / bmp->w) , (1.0 * hh / bmp->h), 0);					
 						SDL_BlitSurface(preview, NULL, screen, &(SDL_Rect){ox,oy}); 
@@ -5398,8 +5398,8 @@ static void Menu_loop(void) {
 				else {
 					SDL_Rect preview_rect = {ox,oy,hw,hh};
 					SDL_FillRect(screen, &preview_rect, 0);
-					if (menu.save_exists) GFX_blitMessage(font.large, "No Preview", screen, &preview_rect);
-					else GFX_blitMessage(font.large, "Empty Slot", screen, &preview_rect);
+					if (menu.save_exists) GFX_blitMessage(font.large, (char*)TR("No Preview"), screen, &preview_rect);
+					else GFX_blitMessage(font.large, (char*)TR("Empty Slot"), screen, &preview_rect);
 				}
 				
 				// pagination

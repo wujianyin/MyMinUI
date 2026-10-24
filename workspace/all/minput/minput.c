@@ -239,7 +239,7 @@ int main(int argc , char* argv[]) {
 				blitButton("START", screen, PAD_isPressed(BTN_START), x, y, w);
 				x += w + SCALE1(BUTTON_MARGIN);
 				
-				SDL_Surface* text = TTF_RenderUTF8_Blended(font.tiny, "QUIT", COLOR_LIGHT_TEXT);
+				SDL_Surface* text = TTF_RenderUTF8_Blended(font.tiny, TR("QUIT"), COLOR_LIGHT_TEXT);
 				SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){x,y+(SCALE1(BUTTON_SIZE)-text->h)/2});
 				SDL_FreeSurface(text);
 			}

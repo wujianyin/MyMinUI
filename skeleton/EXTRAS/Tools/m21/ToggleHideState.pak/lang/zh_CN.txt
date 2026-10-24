@@ -1,0 +1,3 @@
+#name: 简体中文
+# Strings of this tool only. Format: English<TAB>translation, \n = line break.
+ToggleHideState	隐藏存档预览

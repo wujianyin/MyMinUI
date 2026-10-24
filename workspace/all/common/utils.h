@@ -55,4 +55,24 @@ void truncateString(char *string, size_t max_len);
 void wrapString(char *string, size_t max_len, size_t max_lines);
 //end of add cheat support
 
+// ---- i18n -----------------------------------------------------------------------------------
+// Strings in the code are English; TR("English") returns the translation of the current language or the
+// same string when there is none. Catalogs are UTF-8 text files, one "English<TAB>translation" per line
+// (\n and \\ are escapes, '#' starts a comment, "#name: ..." gives the name shown in the language list):
+//   <SDCARD>/.system/res/lang/<code>.txt   shared by every program (menus, buttons, minui, minarch)
+//   $PAK_DIR/lang/<code>.txt (or ./lang/)  extra strings of one pak, shipped inside that pak
+// The current language code lives in <SHARED_USERDATA_PATH>/language ("en" = built in, no file needed).
+#define I18N_CODE_MAX 16
+#define I18N_NAME_MAX 64
+typedef struct { char code[I18N_CODE_MAX]; char name[I18N_NAME_MAX]; } I18N_Lang;
+
+void I18N_init(void);                                  // load catalogs for the current language (call once, GFX_init does it)
+const char* I18N_get(const char* s);                   // translation or s itself
+const char* I18N_getLanguage(void);                    // current code, "en" when none was chosen yet
+const char* I18N_getPakName(const char* pak_path, const char* name); // list name of a tool: pak/lang/<code>.txt first, then the shared catalog
+int I18N_isLanguageChosen(void);                       // 0 on first run (no language file)
+int I18N_listLanguages(I18N_Lang* out, int max);       // "en" first, then every <code>.txt found in res/lang
+int I18N_setLanguage(const char* code);                // persist the choice; takes effect at the next I18N_init()
+#define TR(s) I18N_get(s)
+
 #endif

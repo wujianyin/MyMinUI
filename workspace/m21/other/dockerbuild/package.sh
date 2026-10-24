@@ -77,9 +77,11 @@ cp "$BIN/keymon.elf"  "$S/bin/"
 cp "$BIN/libmsettings.so" "$S/lib/"
 cp "$BIN/minui.elf"   "$S/bin/"
 cp "$BIN/minarch.elf" "$S/bin/"
+cp "$BIN/language.elf" "$S/bin/"     # first-start language picker (MinUI.pak/launch.sh) and Tools/Language.pak
 T=$B/EXTRAS/Tools/$PLATFORM
 cp "$BIN/clock.elf"          "$T/Clock.pak/"
 cp "$BIN/minput.elf"         "$T/Input.pak/"
+cp "$BIN/usbmode.elf"        "$T/USB Mode.pak/"
 cp "$BIN/clear_recent.elf"   "$T/Clear Recently Played.pak/"
 cp "$BIN/convertboxart.elf"  "$T/Convert BoxArt.pak/"
 cp "$OLD/outer/Tools/$PLATFORM/Files.pak/MyCommander.elf" "$T/Files.pak/"

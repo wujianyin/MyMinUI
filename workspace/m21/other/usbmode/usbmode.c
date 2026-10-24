@@ -68,7 +68,7 @@ static char status_msg[128] = "Ready - Use UP/DOWN & LEFT/RIGHT or A";
 
 static const char *net_type_name(void) { return net_type == 1 ? "ncm" : (net_type == 2 ? "rndis" : "ecm"); }
 static const char *net_type_label(void) {
-    return net_type == 1 ? "NCM (Mac/Linux/Win11)" : (net_type == 2 ? "RNDIS (Windows)" : "ECM (Mac/Linux)");
+    return net_type == 1 ? TR("NCM (Mac/Linux/Win11)") : (net_type == 2 ? TR("RNDIS (Windows)") : TR("ECM (Mac/Linux)"));
 }
 static void save_net_type(void) {
     mkdir("/mnt/SDCARD/.userdata", 0777);
@@ -148,7 +148,7 @@ static void apply_usb_config(void) {
     if (cur_role == ROLE_HOST) {
         uh_set_host();
         uh_daemon_start();
-        snprintf(status_msg, sizeof(status_msg), "USB Host ON (ADB/USB gadget unavailable while Host is on)");
+        snprintf(status_msg, sizeof(status_msg), TR("USB Host ON (ADB/USB gadget unavailable while Host is on)"));
         return;
     }
 
@@ -238,13 +238,13 @@ static void apply_usb_config(void) {
                 run_net("up");
             }
         }
-        snprintf(status_msg, sizeof(status_msg), "Active: Storage=%s | ADB=%s | Serial=%s | Net=%s",
-                 cur_storage == STORAGE_RW ? "RW" : (cur_storage == STORAGE_RO ? "RO" : "OFF"),
-                 cur_adb ? "ON" : "OFF",
-                 cur_serial ? "ON" : "OFF",
-                 cur_net == 1 ? "NET 192.168.7.1 +inet" : (cur_net == 2 ? "NET 192.168.7.1 local" : "OFF"));
+        snprintf(status_msg, sizeof(status_msg), TR("Active: Storage=%s | ADB=%s | Serial=%s | Net=%s"),
+                 cur_storage == STORAGE_RW ? "RW" : (cur_storage == STORAGE_RO ? "RO" : TR("OFF")),
+                 cur_adb ? TR("ON") : TR("OFF"),
+                 cur_serial ? TR("ON") : TR("OFF"),
+                 cur_net == 1 ? TR("NET 192.168.7.1 +inet") : (cur_net == 2 ? TR("NET 192.168.7.1 local") : TR("OFF")));
     } else {
-        snprintf(status_msg, sizeof(status_msg), "All USB Gadget Functions Disabled");
+        snprintf(status_msg, sizeof(status_msg), TR("All USB Gadget Functions Disabled"));
     }
 }
 
@@ -270,18 +270,18 @@ static void host_dev_line(const UhDev *u, char *out, size_t n) {
                 if (!uh_mnts[i].mounted && !strcmp(uh_mnts[i].err, "ejected")) ejected++;
                 else if (!uh_mnts[i].mounted && uh_mnts[i].tries >= 5) failed++;
             }
-        if (!nm) snprintf(extra, sizeof(extra), " - reading...");
-        else if (mounted == nm) snprintf(extra, sizeof(extra), " - mounted (%llu MB)", mb);
-        else if (ejected && !failed) snprintf(extra, sizeof(extra), " - ejected (safe to unplug)");
-        else if (failed) snprintf(extra, sizeof(extra), " - mount failed");
-        else snprintf(extra, sizeof(extra), " - mounting...");
+        if (!nm) snprintf(extra, sizeof(extra), TR(" - reading..."));
+        else if (mounted == nm) snprintf(extra, sizeof(extra), TR(" - mounted (%llu MB)"), mb);
+        else if (ejected && !failed) snprintf(extra, sizeof(extra), TR(" - ejected (safe to unplug)"));
+        else if (failed) snprintf(extra, sizeof(extra), TR(" - mount failed"));
+        else snprintf(extra, sizeof(extra), TR(" - mounting..."));
     }
     snprintf(out, n, "[%s] %s%s", uh_cls_name(u->cls), u->name, extra);
 }
 
 /* detail text for the footer (for the selected device) */
 static void host_dev_detail(const UhDev *u, char *out, size_t n) {
-    snprintf(out, n, "%s  %s  %s Mbps", u->path, u->vidpid, u->speed[0] ? u->speed : "?");
+    snprintf(out, n, TR("%s  %s  %s Mbps"), u->path, u->vidpid, u->speed[0] ? u->speed : "?");
     if (u->cls == UC_STORAGE)
         for (int i = 0; i < UH_MAX_MNT; i++)
             if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) {
@@ -298,7 +298,7 @@ static void host_draw_list(SDL_Surface *screen, int show_setting, const char *ti
                            char rows[][200], int n, int sel, const char *foot, char **btn_a) {
     GFX_clear(screen);
     GFX_blitHardwareGroup(screen, show_setting, 0);
-    SDL_Surface *t = TTF_RenderUTF8_Blended(font.large, title, COLOR_GOLD);
+    SDL_Surface *t = TTF_RenderUTF8_Blended(font.large, TR(title), COLOR_GOLD);
     if (t) {
         SDL_BlitSurface(t, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
         SDL_FreeSurface(t);
@@ -322,7 +322,7 @@ static void host_draw_list(SDL_Surface *screen, int show_setting, const char *ti
     }
     if (foot && foot[0]) {
         char fdisp[200];
-        GFX_truncateText(font.small, foot, fdisp, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
+        GFX_truncateText(font.small, TR(foot), fdisp, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
         SDL_Surface *st = TTF_RenderUTF8_Blended(font.small, fdisp, COLOR_LIGHT_TEXT);
         if (st) {
             SDL_BlitSurface(st, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), screen->h - SCALE1(PADDING + PILL_SIZE + 22)});
@@ -364,10 +364,10 @@ static void host_show_details(SDL_Surface *screen, const UhDev *u) {
     host_attr(u->path, "bNumInterfaces", nif, sizeof(nif));
 
     snprintf(rows[n++], sizeof(rows[0]), "%s", u->name);
-    snprintf(rows[n++], sizeof(rows[0]), "Type: %s%s   ID: %s", uh_cls_name(u->cls), u->cls == UC_INTERNAL ? " (built-in)" : "", u->vidpid);
-    snprintf(rows[n++], sizeof(rows[0]), "Port: %s   Speed: %s Mbps   USB %s", u->path, u->speed[0] ? u->speed : "?", ver);
-    snprintf(rows[n++], sizeof(rows[0]), "Vendor: %s   Power: %s", mf, pwr);
-    snprintf(rows[n++], sizeof(rows[0]), "Serial: %s", ser);
+    snprintf(rows[n++], sizeof(rows[0]), TR("Type: %s%s   ID: %s"), uh_cls_name(u->cls), u->cls == UC_INTERNAL ? TR(" (built-in)") : "", u->vidpid);
+    snprintf(rows[n++], sizeof(rows[0]), TR("Port: %s   Speed: %s Mbps   USB %s"), u->path, u->speed[0] ? u->speed : "?", ver);
+    snprintf(rows[n++], sizeof(rows[0]), TR("Vendor: %s   Power: %s"), mf, pwr);
+    snprintf(rows[n++], sizeof(rows[0]), TR("Serial: %s"), ser);
 
     /* interfaces + bound drivers */
     {
@@ -389,7 +389,7 @@ static void host_show_details(SDL_Surface *screen, const UhDev *u) {
             cnt++;
         }
         if (d) closedir(d);
-        snprintf(rows[n++], sizeof(rows[0]), "Interfaces(%s): %s", nif, cnt ? ln : "-");
+        snprintf(rows[n++], sizeof(rows[0]), TR("Interfaces(%s): %s"), nif, cnt ? ln : "-");
     }
 
     if (u->cls == UC_STORAGE) {
@@ -400,13 +400,13 @@ static void host_show_details(SDL_Surface *screen, const UhDev *u) {
             if (uh_mnts[i].mounted)
                 snprintf(rows[n++], sizeof(rows[0]), "%s [%s %llu MB] -> %s", uh_mnts[i].dev, uh_mnts[i].fs, uh_mnts[i].mb, uh_mnts[i].mnt);
             else
-                snprintf(rows[n++], sizeof(rows[0]), "%s: not mounted (%s)", uh_mnts[i].dev, uh_mnts[i].err[0] ? uh_mnts[i].err : "pending");
+                snprintf(rows[n++], sizeof(rows[0]), TR("%s: not mounted (%s)"), uh_mnts[i].dev, uh_mnts[i].err[0] ? uh_mnts[i].err : TR("pending"));
         }
-        if (!found && n < MAXR) snprintf(rows[n++], sizeof(rows[0]), "no partitions detected yet");
+        if (!found && n < MAXR) snprintf(rows[n++], sizeof(rows[0]), TR("no partitions detected yet"));
     } else if (u->cls == UC_NET && n < MAXR) {
-        snprintf(rows[n++], sizeof(rows[0]), "Network adapter: no driver for it in this kernel unless listed above");
+        snprintf(rows[n++], sizeof(rows[0]), TR("Network adapter: no driver for it in this kernel unless listed above"));
     } else if (u->cls == UC_HUB && n < MAXR) {
-        snprintf(rows[n++], sizeof(rows[0]), "Hub: devices behind it are listed on the previous page");
+        snprintf(rows[n++], sizeof(rows[0]), TR("Hub: devices behind it are listed on the previous page"));
     }
     (void)dcl;
     while (!quit) {
@@ -415,7 +415,7 @@ static void host_show_details(SDL_Surface *screen, const UhDev *u) {
         if (PAD_justPressed(BTN_B) || PAD_justPressed(BTN_A)) quit = 1;
         PWR_update(&dirty, &show_setting, NULL, NULL);
         if (dirty) {
-            host_draw_list(screen, show_setting, "Device details", rows, n, -1, "", NULL);
+            host_draw_list(screen, show_setting, TR("Device details"), rows, n, -1, "", NULL);
             dirty = 0;
         } else GFX_sync();
     }
@@ -429,10 +429,10 @@ static int host_storage_menu(SDL_Surface *screen, const UhDev *u, char *hint, si
         for (int i = 0; i < UH_MAX_MNT; i++)
             if (uh_mnts[i].active && !strcmp(uh_mnts[i].disk, u->disk)) { total_n++; mounted_n += uh_mnts[i].mounted; }
         char rows[4][200];
-        snprintf(rows[0], sizeof(rows[0]), "Eject (unmount, safe to unplug)%s", mounted_n ? "" : "  - nothing mounted");
-        snprintf(rows[1], sizeof(rows[1]), "Mount / retry%s", (total_n && mounted_n == total_n) ? "  - already mounted" : "");
-        snprintf(rows[2], sizeof(rows[2]), "Details (mount path, filesystem, size)");
-        snprintf(rows[3], sizeof(rows[3]), "Cancel");
+        snprintf(rows[0], sizeof(rows[0]), TR("Eject (unmount, safe to unplug)%s"), mounted_n ? "" : TR("  - nothing mounted"));
+        snprintf(rows[1], sizeof(rows[1]), TR("Mount / retry%s"), (total_n && mounted_n == total_n) ? TR("  - already mounted") : "");
+        snprintf(rows[2], sizeof(rows[2]), TR("Details (mount path, filesystem, size)"));
+        snprintf(rows[3], sizeof(rows[3]), TR("Cancel"));
 
         GFX_startFrame();
         PAD_poll();
@@ -443,12 +443,12 @@ static int host_storage_menu(SDL_Surface *screen, const UhDev *u, char *hint, si
             if (sel == 0) {
                 if (mounted_n) {
                     char cmd[40]; snprintf(cmd, sizeof(cmd), "eject %s", u->disk); uh_cmd_send(cmd);
-                    snprintf(hint, hint_n, "Ejected %s - safe to unplug (A > Mount to reuse)", u->disk);
+                    snprintf(hint, hint_n, TR("Ejected %s - safe to unplug (A > Mount to reuse)"), u->disk);
                     refresh = 1; quit = 1;
-                } else snprintf(hint, hint_n, "%s: nothing is mounted", u->disk), quit = 1;
+                } else snprintf(hint, hint_n, TR("%s: nothing is mounted"), u->disk), quit = 1;
             } else if (sel == 1) {
                 char cmd[40]; snprintf(cmd, sizeof(cmd), "retry %s", u->disk); uh_cmd_send(cmd);
-                snprintf(hint, hint_n, "Mounting %s...", u->disk);
+                snprintf(hint, hint_n, TR("Mounting %s..."), u->disk);
                 refresh = 1; quit = 1;
             } else if (sel == 2) {
                 host_show_details(screen, u);
@@ -496,13 +496,13 @@ static void run_host_page(SDL_Surface *screen) {
             dirty = 1;
             if (sel == 0) {
                 int on = (cur_role != ROLE_HOST);
-                snprintf(hint, sizeof(hint), on ? "Switching to USB Host..." : "Ejecting and switching back to device mode...");
+                snprintf(hint, sizeof(hint), "%s", on ? TR("Switching to USB Host...") : TR("Ejecting and switching back to device mode..."));
                 GFX_clear(screen);
                 GFX_blitMessage(font.large, hint, screen, &(SDL_Rect){0, 0, screen->w, screen->h});
                 GFX_flip(screen);
                 host_set_enabled(on);
                 last_ms = 0;
-                snprintf(hint, sizeof(hint), on ? "Host ON. Plug a self-powered hub / device." : "Host OFF (device mode restored)");
+                snprintf(hint, sizeof(hint), "%s", on ? TR("Host ON. Plug a self-powered hub / device.") : TR("Host OFF (device mode restored)"));
             } else if (sel == nrows - 1) {
                 if (PAD_justPressed(BTN_A)) quit = 1;
             } else if (is_dev_row) {
@@ -527,7 +527,7 @@ static void run_host_page(SDL_Surface *screen) {
             GFX_clear(screen);
             GFX_blitHardwareGroup(screen, show_setting, 0);
 
-            SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, "USB Host (OTG)", COLOR_GOLD);
+            SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, TR("USB Host (OTG)"), COLOR_GOLD);
             if (title) {
                 SDL_BlitSurface(title, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
                 SDL_FreeSurface(title);
@@ -535,12 +535,12 @@ static void run_host_page(SDL_Surface *screen) {
 
             char rows[2 + UH_MAX_DEV][160];
             int n = 0;
-            snprintf(rows[n++], sizeof(rows[0]), "Host mode: %s", cur_role == ROLE_HOST ? "< ON >" : "< OFF >");
+            snprintf(rows[n++], sizeof(rows[0]), TR("Host mode: %s"), cur_role == ROLE_HOST ? TR("< ON >") : TR("< OFF >"));
             if (cur_role == ROLE_HOST) {
-                if (!uh_ndev) snprintf(rows[n++], sizeof(rows[0]), "(no devices - plug a powered hub)");
+                if (!uh_ndev) snprintf(rows[n++], sizeof(rows[0]), TR("(no devices - plug a powered hub)"));
                 else for (int i = 0; i < uh_ndev; i++) host_dev_line(&uh_devs[i], rows[n++], sizeof(rows[0]));
             }
-            snprintf(rows[n++], sizeof(rows[0]), "[ Back ]");
+            snprintf(rows[n++], sizeof(rows[0]), TR("[ Back ]"));
             /* display row -> selectable row index (-1 = non selectable placeholder) */
             int placeholder = (cur_role == ROLE_HOST && !uh_ndev);
             for (int i = 0; i < n; i++) {
@@ -568,7 +568,7 @@ static void run_host_page(SDL_Surface *screen) {
             if (is_dev_row) host_dev_detail(&uh_devs[sel - 1], foot, sizeof(foot));
             else snprintf(foot, sizeof(foot), "%s", hint);
             char fdisp[200];
-            GFX_truncateText(font.small, foot, fdisp, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
+            GFX_truncateText(font.small, TR(foot), fdisp, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
             SDL_Surface *st = TTF_RenderUTF8_Blended(font.small, fdisp, COLOR_LIGHT_TEXT);
             if (st) {
                 SDL_BlitSurface(st, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), screen->h - SCALE1(PADDING + PILL_SIZE + 22)});
@@ -645,8 +645,8 @@ static void ui_draw_list(SDL_Surface *screen, int show_setting, const char *titl
     GFX_blitHardwareGroup(screen, show_setting, 0);
 
     char tt[96];
-    if (n > UI_VIS) snprintf(tt, sizeof(tt), "%s  (%d/%d)", title_txt, sel + 1, n);
-    else snprintf(tt, sizeof(tt), "%s", title_txt);
+    if (n > UI_VIS) snprintf(tt, sizeof(tt), "%s  (%d/%d)", TR(title_txt), sel + 1, n);
+    else snprintf(tt, sizeof(tt), "%s", TR(title_txt));
     SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, tt, COLOR_GOLD);
     if (title) {
         SDL_BlitSurface(title, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING)});
@@ -674,7 +674,7 @@ static void ui_draw_list(SDL_Surface *screen, int show_setting, const char *titl
 
     if (foot && *foot) {
         char fd[200];
-        GFX_truncateText(font.tiny, foot, fd, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
+        GFX_truncateText(font.tiny, TR(foot), fd, screen->w - SCALE1(PADDING * 2 + BUTTON_PADDING * 2), 0);
         SDL_Surface *ft = TTF_RenderUTF8_Blended(font.tiny, fd, COLOR_LIGHT_TEXT);
         if (ft) {
             SDL_BlitSurface(ft, NULL, screen, &(SDL_Rect){SCALE1(PADDING + BUTTON_PADDING), SCALE1(PADDING + (UI_VIS + 1) * PILL_SIZE + 1)});
@@ -697,6 +697,10 @@ static int wrap_text(TTF_Font *f, const char *text, int max_w, char lines[][200]
         char para[400];
         if (plen > (int)sizeof(para) - 1) plen = sizeof(para) - 1;
         memcpy(para, p, plen); para[plen] = 0;
+        {   /* each paragraph is one catalog entry (key = English paragraph incl. leading indent) */
+            const char *tr = TR(para);
+            if (tr != para) snprintf(para, sizeof(para), "%s", tr);
+        }
         p += (e ? (e - p) + 1 : plen);
 
         int ind = 0;
@@ -706,23 +710,31 @@ static int wrap_text(TTF_Font *f, const char *text, int max_w, char lines[][200]
         memset(prefix, ' ', ind); prefix[ind] = 0;
         if (!para[ind]) { lines[nl][0] = 0; nl++; continue; }
 
+        /* tokens: an ASCII word, or ONE multi-byte (CJK) character. A space is only inserted where the source had one,
+         * so Chinese text (no spaces) wraps between any two characters. */
         char cur[200]; snprintf(cur, sizeof(cur), "%s", prefix);
-        char *save = NULL, *w = strtok_r(para + ind, " ", &save);
-        int first = 1;
-        while (w && nl < max_lines) {
+        const char *q = para + ind;
+        int first = 1, space_before = 0;
+        while (*q && nl < max_lines) {
+            if (*q == ' ') { space_before = 1; q++; continue; }
+            const char *ts = q;
+            if ((unsigned char)*q < 0x80) { while (*q && *q != ' ' && (unsigned char)*q < 0x80) q++; }
+            else { q++; while (((unsigned char)*q & 0xC0) == 0x80) q++; }
+            char tok[100];
+            int tl = (int)(q - ts); if (tl > (int)sizeof(tok) - 1) tl = sizeof(tok) - 1;
+            memcpy(tok, ts, tl); tok[tl] = 0;
             char cand[200];
-            snprintf(cand, sizeof(cand), first ? "%s%s" : "%s %s", cur, w);
+            snprintf(cand, sizeof(cand), "%s%s%s", cur, (!first && space_before) ? " " : "", tok);
             int tw = 0;
             TTF_SizeUTF8(f, cand, &tw, NULL);
             if (tw > max_w && !first) {
                 snprintf(lines[nl++], 200, "%s", cur);
-                snprintf(cur, sizeof(cur), "%s  %s", prefix, w);   /* continuation indent */
-                first = 0;
+                snprintf(cur, sizeof(cur), "%s  %s", prefix, tok);   /* continuation indent */
             } else {
                 snprintf(cur, sizeof(cur), "%s", cand);
-                first = 0;
             }
-            w = strtok_r(NULL, " ", &save);
+            first = 0;
+            space_before = 0;
         }
         if (nl < max_lines) snprintf(lines[nl++], 200, "%s", cur);
     }
@@ -811,7 +823,7 @@ static void run_help_page(SDL_Surface *screen, int os) {
             GFX_clear(screen);
             GFX_blitHardwareGroup(screen, show_setting, 0);
             char tt[96];
-            snprintf(tt, sizeof(tt), "Connect: %s", os_name(os));
+            snprintf(tt, sizeof(tt), TR("Connect: %s"), os_name(os));
             if (maxtop > 0) { char t2[96]; snprintf(t2, sizeof(t2), "%s  (%d/%d)", tt, top + 1, maxtop + 1); snprintf(tt, sizeof(tt), "%s", t2); }
             SDL_Surface *title = TTF_RenderUTF8_Blended(font.large, tt, COLOR_GOLD);
             if (title) {
@@ -849,19 +861,19 @@ static void net_set_mode(SDL_Surface *screen, int mode) {
     }
     cur_role = ROLE_DEVICE;
     GFX_clear(screen);
-    GFX_blitMessage(font.large, "Applying USB Network...", screen, &(SDL_Rect){0, 0, screen->w, screen->h});
+    GFX_blitMessage(font.large, (char*)TR("Applying USB Network..."), screen, &(SDL_Rect){0, 0, screen->w, screen->h});
     GFX_flip(screen);
     apply_usb_config();
 }
 
 static const char *net_mode_label(void) {
-    return cur_net == 1 ? "< ON (+Internet via PC) >" : (cur_net == 2 ? "< ON (Local only) >" : "< OFF >");
+    return cur_net == 1 ? TR("< ON (+Internet via PC) >") : (cur_net == 2 ? TR("< ON (Local only) >") : TR("< OFF >"));
 }
 
 static void run_net_page(SDL_Surface *screen) {
     enum { R_MODE = 0, R_TYPE, R_HELP, R_BACK, R_COUNT };
     int sel = 0, top = 0, os = OS_WINDOWS, dirty = 1, show_setting = 0, quit = 0;
-    char foot[200] = "Mode: ON(+Internet) = route via PC. ON(Local only) = no gateway.";
+    char foot[200]; snprintf(foot, sizeof(foot), "%s", TR("Mode: ON(+Internet) = route via PC. ON(Local only) = no gateway."));
 
     while (!quit) {
         GFX_startFrame();
@@ -882,7 +894,7 @@ static void run_net_page(SDL_Surface *screen) {
                     net_type = (net_type + dir + 3) % 3;
                     save_net_type();
                     if (cur_net) { cur_role = ROLE_DEVICE; apply_usb_config(); }
-                    snprintf(foot, sizeof(foot), "Type %s. Re-run the share script on the PC after switching.", net_type_name());
+                    snprintf(foot, sizeof(foot), TR("Type %s. Re-run the share script on the PC after switching."), net_type_name());
                     break;
                 case R_HELP:
                     if (a) run_help_page(screen, os);
@@ -897,14 +909,14 @@ static void run_net_page(SDL_Surface *screen) {
         PWR_update(&dirty, &show_setting, NULL, NULL);
         if (dirty) {
             char rows[R_COUNT][UI_ROW_LEN];
-            snprintf(rows[R_MODE], UI_ROW_LEN, "Mode: %s", net_mode_label());
-            snprintf(rows[R_TYPE], UI_ROW_LEN, "Network Type: < %s >", net_type_label());
-            snprintf(rows[R_HELP], UI_ROW_LEN, "How to connect: < %s >  (A: open)", os_name(os));
-            snprintf(rows[R_BACK], UI_ROW_LEN, "[ Back ]");
+            snprintf(rows[R_MODE], UI_ROW_LEN, TR("Mode: %s"), net_mode_label());
+            snprintf(rows[R_TYPE], UI_ROW_LEN, TR("Network Type: < %s >"), net_type_label());
+            snprintf(rows[R_HELP], UI_ROW_LEN, TR("How to connect: < %s >  (A: open)"), os_name(os));
+            snprintf(rows[R_BACK], UI_ROW_LEN, TR("[ Back ]"));
             const char *f = foot;
-            if (sel == R_TYPE) f = "ECM: Mac/Linux  NCM: Mac/Linux/Win11  RNDIS: Windows (Mac: no)";
-            else if (sel == R_HELP) f = "Share scripts: SD card Tools/m21/USB Mode.pak/host-tools";
-            ui_draw_list(screen, show_setting, "USB Network", rows, R_COUNT, sel, &top, f, "CHANGE");
+            if (sel == R_TYPE) f = TR("ECM: Mac/Linux  NCM: Mac/Linux/Win11  RNDIS: Windows (Mac: no)");
+            else if (sel == R_HELP) f = TR("Share scripts: SD card Tools/m21/USB Mode.pak/host-tools");
+            ui_draw_list(screen, show_setting, TR("USB Network"), rows, R_COUNT, sel, &top, f, "CHANGE");
             dirty = 0;
         } else GFX_sync();
     }
@@ -913,7 +925,7 @@ static void run_net_page(SDL_Surface *screen) {
 static void run_boot_page(SDL_Surface *screen) {
     enum { B_ADB = 0, B_STORAGE, B_SERIAL, B_NET, B_TYPE, B_BACK, B_COUNT };
     int sel = 0, top = 0, dirty = 1, show_setting = 0, quit = 0;
-    char foot[200] = "Choose what USB turns on at every boot. Saved automatically.";
+    char foot[200]; snprintf(foot, sizeof(foot), "%s", TR("Choose what USB turns on at every boot. Saved automatically."));
 
     while (!quit) {
         GFX_startFrame();
@@ -928,28 +940,28 @@ static void run_boot_page(SDL_Surface *screen) {
             switch (sel) {
                 case B_ADB:
                     boot_adb = !boot_adb;
-                    snprintf(foot, sizeof(foot), boot_adb ? "ADB will start at boot" : "ADB will NOT start at boot (use with care)");
+                    snprintf(foot, sizeof(foot), "%s", boot_adb ? TR("ADB will start at boot") : TR("ADB will NOT start at boot (use with care)"));
                     break;
                 case B_STORAGE:
                     boot_storage = storage_step(boot_storage, dir);
                     if (boot_storage == STORAGE_RW) snprintf(foot, sizeof(foot), "%s", STORAGE_RW_WARN);
-                    else snprintf(foot, sizeof(foot), "SD card shown to the PC at boot: %s",
-                             boot_storage == STORAGE_RO ? "read-only" : "no");
+                    else snprintf(foot, sizeof(foot), TR("SD card shown to the PC at boot: %s"),
+                             boot_storage == STORAGE_RO ? TR("read-only") : TR("no"));
                     break;
                 case B_SERIAL:
                     boot_serial = !boot_serial;
-                    if (boot_serial && boot_net) { boot_net = 0; snprintf(foot, sizeof(foot), "Serial ON: USB Network turned off (they exclude each other)"); }
-                    else snprintf(foot, sizeof(foot), boot_serial ? "Serial console (ttyGS0) at boot" : "Serial off at boot");
+                    if (boot_serial && boot_net) { boot_net = 0; snprintf(foot, sizeof(foot), TR("Serial ON: USB Network turned off (they exclude each other)")); }
+                    else snprintf(foot, sizeof(foot), "%s", boot_serial ? TR("Serial console (ttyGS0) at boot") : TR("Serial off at boot"));
                     break;
                 case B_NET:
                     boot_net = !boot_net;
-                    if (boot_net && boot_serial) { boot_serial = 0; snprintf(foot, sizeof(foot), "Network ON: USB Serial turned off (they exclude each other)"); }
-                    else snprintf(foot, sizeof(foot), boot_net ? "USB Network at boot (sharing: see USB Network page)" : "USB Network off at boot");
+                    if (boot_net && boot_serial) { boot_serial = 0; snprintf(foot, sizeof(foot), TR("Network ON: USB Serial turned off (they exclude each other)")); }
+                    else snprintf(foot, sizeof(foot), "%s", boot_net ? TR("USB Network at boot (sharing: see USB Network page)") : TR("USB Network off at boot"));
                     break;
                 case B_TYPE:
                     net_type = (net_type + dir + 3) % 3;
                     save_net_type();
-                    snprintf(foot, sizeof(foot), "Network type: %s", net_type_label());
+                    snprintf(foot, sizeof(foot), TR("Network type: %s"), net_type_label());
                     break;
                 case B_BACK:
                     if (a) quit = 1;
@@ -961,14 +973,14 @@ static void run_boot_page(SDL_Surface *screen) {
         PWR_update(&dirty, &show_setting, NULL, NULL);
         if (dirty) {
             char rows[B_COUNT][UI_ROW_LEN];
-            snprintf(rows[B_ADB], UI_ROW_LEN, "[%c] ADB Debugging", boot_adb ? 'x' : ' ');
-            snprintf(rows[B_STORAGE], UI_ROW_LEN, "[%c] USB Storage: %s", boot_storage ? 'x' : ' ',
-                     boot_storage == 1 ? "< Read-Write >" : (boot_storage == 2 ? "< Read-Only >" : "< Off >"));
-            snprintf(rows[B_SERIAL], UI_ROW_LEN, "[%c] USB Serial (CDC-ACM)", boot_serial ? 'x' : ' ');
-            snprintf(rows[B_NET], UI_ROW_LEN, "[%c] USB Network", boot_net ? 'x' : ' ');
-            snprintf(rows[B_TYPE], UI_ROW_LEN, "      Network Type: < %s >", net_type_label());
-            snprintf(rows[B_BACK], UI_ROW_LEN, "[ Back ]");
-            ui_draw_list(screen, show_setting, "Boot Defaults", rows, B_COUNT, sel, &top, foot, "TOGGLE");
+            snprintf(rows[B_ADB], UI_ROW_LEN, TR(TR("[%c] ADB Debugging")), boot_adb ? 'x' : ' ');
+            snprintf(rows[B_STORAGE], UI_ROW_LEN, TR(TR("[%c] USB Storage: %s")), boot_storage ? 'x' : ' ',
+                     boot_storage == 1 ? TR("< Read-Write >") : (boot_storage == 2 ? TR("< Read-Only >") : TR("< Off >")));
+            snprintf(rows[B_SERIAL], UI_ROW_LEN, TR(TR("[%c] USB Serial (CDC-ACM)")), boot_serial ? 'x' : ' ');
+            snprintf(rows[B_NET], UI_ROW_LEN, TR(TR("[%c] USB Network")), boot_net ? 'x' : ' ');
+            snprintf(rows[B_TYPE], UI_ROW_LEN, TR(TR("      Network Type: < %s >")), net_type_label());
+            snprintf(rows[B_BACK], UI_ROW_LEN, TR("[ Back ]"));
+            ui_draw_list(screen, show_setting, TR("Boot Defaults"), rows, B_COUNT, sel, &top, foot, "TOGGLE");
             dirty = 0;
         } else GFX_sync();
     }
@@ -1004,7 +1016,7 @@ int main(int argc, char *argv[]) {
             if (cur_storage != STORAGE_OFF && !is_process_running("umsd.elf")) {
                 cur_storage = STORAGE_OFF;
                 apply_usb_config();
-                snprintf(status_msg, sizeof(status_msg), "USB Storage Ejected by Computer");
+                snprintf(status_msg, sizeof(status_msg), TR("USB Storage Ejected by Computer"));
                 dirty = 1;
             }
         }
@@ -1024,7 +1036,7 @@ int main(int argc, char *argv[]) {
                 case ITEM_STORAGE:
                     cur_storage = storage_step(cur_storage, dir);
                     cur_role = ROLE_DEVICE;
-                    snprintf(status_msg, sizeof(status_msg), "Applying USB Storage Mode...");
+                    snprintf(status_msg, sizeof(status_msg), TR("Applying USB Storage Mode..."));
                     GFX_clear(screen);
                     GFX_blitMessage(font.large, status_msg, screen, &(SDL_Rect){0, 0, screen->w, screen->h});
                     GFX_flip(screen);
@@ -1041,7 +1053,7 @@ int main(int argc, char *argv[]) {
                     cur_role = ROLE_DEVICE;
                     if (cur_serial && cur_net) cur_net = 0;   /* UDC has one interrupt endpoint: serial and network are exclusive */
                     apply_usb_config();
-                    if (cur_serial) snprintf(status_msg, sizeof(status_msg), "Serial (CDC-ACM) ON; Network turned off (not enough endpoints)");
+                    if (cur_serial) snprintf(status_msg, sizeof(status_msg), TR("Serial (CDC-ACM) ON; Network turned off (not enough endpoints)"));
                     break;
                 case ITEM_NETWORK:
                     if (is_a) run_net_page(screen);
@@ -1065,18 +1077,18 @@ int main(int argc, char *argv[]) {
 
         if (dirty) {
             char rows[ITEM_COUNT][UI_ROW_LEN];
-            snprintf(rows[ITEM_STORAGE], UI_ROW_LEN, "USB Storage (SD Card): %s",
-                     cur_storage == STORAGE_RW ? "< ON (Read-Write, risky) >" :
-                     (cur_storage == STORAGE_RO ? "< ON (Read-Only) >" : "< OFF >"));
-            snprintf(rows[ITEM_ADB], UI_ROW_LEN, "ADB Debugging: %s", cur_adb ? "< ON >" : "< OFF >");
-            snprintf(rows[ITEM_SERIAL], UI_ROW_LEN, "USB Serial (CDC-ACM): %s", cur_serial ? "< ON >" : "< OFF >");
-            snprintf(rows[ITEM_NETWORK], UI_ROW_LEN, "USB Network: %s  (A: more)",
-                     cur_net == 1 ? "< ON +Internet >" : (cur_net == 2 ? "< ON Local >" : "< OFF >"));
-            snprintf(rows[ITEM_ROLE], UI_ROW_LEN, "USB Host (OTG): %s",
-                     cur_role == ROLE_HOST ? "< ON >  (A: devices)" : "< OFF >  (A: open)");
-            snprintf(rows[ITEM_BOOT], UI_ROW_LEN, "Boot Defaults  (A: choose)");
-            snprintf(rows[ITEM_EXIT], UI_ROW_LEN, "[ Return to MinUI ]");
-            ui_draw_list(screen, show_setting, "USB Mode Manager", rows, ITEM_COUNT, selected, &top,
+            snprintf(rows[ITEM_STORAGE], UI_ROW_LEN, TR("USB Storage (SD Card): %s"),
+                     cur_storage == STORAGE_RW ? TR("< ON (Read-Write, risky) >") :
+                     (cur_storage == STORAGE_RO ? TR("< ON (Read-Only) >") : TR("< OFF >")));
+            snprintf(rows[ITEM_ADB], UI_ROW_LEN, TR("ADB Debugging: %s"), cur_adb ? TR("< ON >") : TR("< OFF >"));
+            snprintf(rows[ITEM_SERIAL], UI_ROW_LEN, TR("USB Serial (CDC-ACM): %s"), cur_serial ? TR("< ON >") : TR("< OFF >"));
+            snprintf(rows[ITEM_NETWORK], UI_ROW_LEN, TR("USB Network: %s  (A: more)"),
+                     cur_net == 1 ? TR("< ON +Internet >") : (cur_net == 2 ? TR("< ON Local >") : TR("< OFF >")));
+            snprintf(rows[ITEM_ROLE], UI_ROW_LEN, TR("USB Host (OTG): %s"),
+                     cur_role == ROLE_HOST ? TR("< ON >  (A: devices)") : TR("< OFF >  (A: open)"));
+            snprintf(rows[ITEM_BOOT], UI_ROW_LEN, TR("Boot Defaults  (A: choose)"));
+            snprintf(rows[ITEM_EXIT], UI_ROW_LEN, TR("[ Return to MinUI ]"));
+            ui_draw_list(screen, show_setting, TR("USB Mode Manager"), rows, ITEM_COUNT, selected, &top,
                          status_msg, "CHANGE");
             dirty = 0;
         } else {

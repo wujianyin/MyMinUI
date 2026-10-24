@@ -552,6 +552,15 @@ static int restore_end = 0;
 #define FANCY_MODE "Fancy (Boxart + State)"
 
 int fancy_mode = 0;
+
+// Current value of the Tools that only toggle a flag file (Tools/<platform>/Toggle*.pak), NULL for any other entry
+static const char* toggleState(const char* name) {
+	if (exactMatch((char*)name, "ToggleSleepMode")) return exists(PWR_SLEEP_PATH) ? TR("Sleep") : TR("Power off");
+	if (exactMatch((char*)name, "ToggleSeekPageTriggers")) return exists(PAGE_SEEK_TRIGGERS) ? "L2/R2" : TR("Left/Right");
+	if (exactMatch((char*)name, "ToggleHideState")) return exists(HIDE_STATE_PATH) ? TR("On") : TR("Off");
+	if (exactMatch((char*)name, "ToggleHideBOXARTifState")) return exists(HIDE_BOXART_IFSTATE_PATH) ? TR("On") : TR("Off");
+	return NULL;
+}
 static int hide_state = 0;
 static int hide_boxartifstate = 0;
 
@@ -1133,8 +1142,8 @@ static Array* getDiscs(char* path){
 				disc += 1;
 				Entry* entry = Entry_new(disc_path, ENTRY_ROM);
 				free(entry->name);
-				char name[16];
-				sprintf(name, "Disc %i", disc);
+				char name[32];
+				snprintf(name, sizeof(name), TR("Disc %i"), disc);
 				entry->name = strdup(name);
 				Array_push(entries, entry);
 			}
@@ -1630,7 +1639,7 @@ int drawStatePreview(SDL_Surface* _screen, char* bmpPath, int stateIndex){
         //printf("IMG_Load: %s\n", IMG_GetError());
         SDL_Rect preview = {ox,oy,hw,hh};
 		SDL_FillRect(_screen, &preview, 0);
-        GFX_blitMessage(font.large, "Empty Slot", _screen, &preview);
+        GFX_blitMessage(font.large, (char*)TR("Empty Slot"), _screen, &preview);
     } else {
 		preview = zoomSurface(unscaled_preview, (1.0 * hw / unscaled_preview->w) , (1.0 * hh / unscaled_preview->h), 0);
 	//	printf("SaveState BMP %s has size is %dx%d\n", bmpPath, unscaled_preview->w, unscaled_preview->h);
@@ -1723,15 +1732,15 @@ int main (int argc, char *argv[]) {
 		state_right = BTN_RIGHT;
 	}
 	
-	sprintf(modeStr, STANDARD_MODE);
+	sprintf(modeStr, "%s", TR(STANDARD_MODE));
 	simple_mode = exists(SIMPLE_MODE_PATH);
 	fancy_mode = exists(FANCY_MODE_PATH);
 	if (simple_mode){
-		sprintf(modeStr, SIMPLE_MODE);
+		sprintf(modeStr, "%s", TR(SIMPLE_MODE));
 	}
 	if (fancy_mode){
 		simple_mode = 0;
-		sprintf(modeStr, FANCY_MODE);
+		sprintf(modeStr, "%s", TR(FANCY_MODE));
 	}
 	char pwractionstr[256];
 	if (exists(PWR_SLEEP_PATH)){
@@ -1800,20 +1809,20 @@ int main (int argc, char *argv[]) {
 					remove(FANCY_MODE_PATH);
 					fancy_mode=0;
 					simple_mode=0;
-					sprintf(modeStr, STANDARD_MODE);
+					sprintf(modeStr, "%s", TR(STANDARD_MODE));
 				} else if (simple_mode) {
 					// go to fancy_mode
 					remove(SIMPLE_MODE_PATH);
 					touch(FANCY_MODE_PATH);
 					simple_mode = 0;
 					fancy_mode = 1;
-					sprintf(modeStr, FANCY_MODE);
+					sprintf(modeStr, "%s", TR(FANCY_MODE));
 				} else {
 					//go to simple mode
 					touch(SIMPLE_MODE_PATH);
 					simple_mode = 1;
 					fancy_mode = 0;
-					sprintf(modeStr, SIMPLE_MODE);
+					sprintf(modeStr, "%s", TR(SIMPLE_MODE));
 				}
 				mode_changed = 1;
 				dirty = 1;
@@ -2087,12 +2096,12 @@ int main (int argc, char *argv[]) {
 					tmp[0] = '\0';
 					
 					// TODO: not sure if I want bare PLAT_* calls here
-					char* extra_key = "Model";
+					char* extra_key = (char*)TR("Model");
 					char* extra_val = PLAT_getModel(); 
 					
-					SDL_Surface* release_txt = TTF_RenderUTF8_Blended(font.large, "Release", COLOR_DARK_TEXT);
+					SDL_Surface* release_txt = TTF_RenderUTF8_Blended(font.large, TR("Release"), COLOR_DARK_TEXT);
 					SDL_Surface* version_txt = TTF_RenderUTF8_Blended(font.large, release, COLOR_WHITE);
-					SDL_Surface* commit_txt = TTF_RenderUTF8_Blended(font.large, "Commit", COLOR_DARK_TEXT);
+					SDL_Surface* commit_txt = TTF_RenderUTF8_Blended(font.large, TR("Commit"), COLOR_DARK_TEXT);
 					SDL_Surface* hash_txt = TTF_RenderUTF8_Blended(font.large, commit, COLOR_WHITE);
 					
 					SDL_Surface* key_txt = TTF_RenderUTF8_Blended(font.large, extra_key, COLOR_DARK_TEXT);
@@ -2129,7 +2138,7 @@ int main (int argc, char *argv[]) {
 					SDL_FreeSurface(hash_txt);
 					SDL_FreeSurface(key_txt);
 					SDL_FreeSurface(val_txt);
-					SDL_Surface* fixedmode_txt = TTF_RenderUTF8_Blended(font.large, "Mode", COLOR_DARK_TEXT);
+					SDL_Surface* fixedmode_txt = TTF_RenderUTF8_Blended(font.large, TR("Mode"), COLOR_DARK_TEXT);
 					SDL_Surface* mode_txt = TTF_RenderUTF8_Blended(font.large, modeStr, COLOR_WHITE);
 					SDL_BlitSurface(fixedmode_txt, NULL, version, &(SDL_Rect){0,SCALE1(VERSION_LINE_HEIGHT*3)});
 					SDL_BlitSurface(mode_txt, NULL, version, &(SDL_Rect){x,SCALE1(VERSION_LINE_HEIGHT*3)});
@@ -2138,7 +2147,7 @@ int main (int argc, char *argv[]) {
 
 					if (is_online!=0) {
 						//is connected, shows the IP Address
-						SDL_Surface* ip_txt = TTF_RenderUTF8_Blended(font.large, "IP Addr", COLOR_DARK_TEXT);
+						SDL_Surface* ip_txt = TTF_RenderUTF8_Blended(font.large, TR("IP Addr"), COLOR_DARK_TEXT);
 						char * ip_addr = PLAT_getIPAddress();
 						SDL_Surface* ip_addr_txt = TTF_RenderUTF8_Blended(font.large, ip_addr, COLOR_WHITE);
 						SDL_BlitSurface(ip_txt, NULL, version, &(SDL_Rect){0,SCALE1(VERSION_LINE_HEIGHT*4)});
@@ -2290,6 +2299,16 @@ int main (int argc, char *argv[]) {
 
 						
 						trimSortingMeta(&entry_name);
+						if (entry->type == ENTRY_PAK) entry_name = (char*)I18N_getPakName(entry->path, entry_name); // tool names come from the pak itself
+						else if (entry->type != ENTRY_ROM) entry_name = (char*)TR(entry_name); // folders, not game names
+						char toggle_label[128];
+						if (entry->type == ENTRY_PAK) {
+							const char* state = toggleState(entry->name);
+							if (state) { // Tools that flip a flag file: show the current value so the effect of A is visible
+								snprintf(toggle_label, sizeof(toggle_label), "%s: %s", entry_name, state);
+								entry_name = toggle_label;
+							}
+						}
 					
 						char display_name[256];
 						int text_width = GFX_truncateText(_font, entry_unique ? entry_unique : entry_name, display_name, available_width, SCALE1(BUTTON_PADDING*2));
@@ -2365,9 +2384,9 @@ int main (int argc, char *argv[]) {
 									getDisplayParentFolderName(entry->path, tmpName);
 									//getEmuName(entry->path, tmpName);
 								} else if (entry->type == ENTRY_PAK){
-									sprintf(tmpName, "Tools");
+									sprintf(tmpName, "%s", TR("Tools"));
 								} else {
-									sprintf(tmpName, "Main Menu");
+									sprintf(tmpName, "%s", TR("Main Menu"));
 								}
 								SDL_Surface* title_txt = TTF_RenderUTF8_Blended(font.small, tmpName, COLOR_WHITE);
 								SDL_BlitSurface(title_txt, NULL, screen, &(SDL_Rect){15, 0});
@@ -2376,7 +2395,7 @@ int main (int argc, char *argv[]) {
 				}
 				else {
 					// TODO: for some reason screen's dimensions end up being 0x0 in GFX_blitMessage...
-					GFX_blitMessage(font.large, "Empty folder", screen, &(SDL_Rect){0,0,screen->w,screen->h}); //, NULL);
+					GFX_blitMessage(font.large, (char*)TR("Empty folder"), screen, &(SDL_Rect){0,0,screen->w,screen->h}); //, NULL);
 				}
 			
 				// buttons

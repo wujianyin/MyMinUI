@@ -1,0 +1,4 @@
+#name: 简体中文
+# Strings of this tool only. Format: English<TAB>translation, \n = line break.
+Clear Recently Played	清除最近游玩
+Are you sure you want to clear\nRecently Played?	确定要清除\n最近游玩记录吗?

@@ -83,9 +83,9 @@ int main(int argc, char* argv[]) {
             sprintf(src,SRCDIR "/%s",namelist[n]->d_name);
             sprintf(dst,DSTDIR "/%s",namelist[n]->d_name);
             makeBoxart(src,dst, boxartdata);
-            sprintf(progressstr,"Converted %d/%d\n%s",n,total,namelist[n]->d_name);
+            snprintf(progressstr,sizeof(progressstr),TR("Converted %d/%d\n%s"),n,total,namelist[n]->d_name);
         } else {
-            sprintf(progressstr,"Skipped %d/%d\n%s",n,total,namelist[n]->d_name);
+            snprintf(progressstr,sizeof(progressstr),TR("Skipped %d/%d\n%s"),n,total,namelist[n]->d_name);
         }        
         GFX_clear(screen);
         GFX_blitMessage(font.large, progressstr, screen, &(SDL_Rect){0,0,screen->w,screen->h});
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
     }
     free(namelist);
     //GFX_clear(screen);
-    GFX_blitMessage(font.large, "Press A to Exit", screen, &(SDL_Rect){0,200,screen->w,screen->h-200});
+    GFX_blitMessage(font.large, (char*)TR("Press A to Exit"), screen, &(SDL_Rect){0,200,screen->w,screen->h-200});
 
     GFX_flip(screen);
     PAD_init();

@@ -1,0 +1,144 @@
+#name: 简体中文
+# Strings of the USB Mode tool. Format: English<TAB>translation, \n = line break.
+# Keep placeholders (%s %c %d %llu) and the "< >" markers exactly as in the English text.
+# Lines that start with spaces are help-page paragraphs: the leading spaces must be kept.
+
+USB Mode	USB 模式
+USB Mode Manager	USB 模式管理
+USB Host (OTG)	USB 主机(OTG)
+USB Network	USB 网络
+Boot Defaults	开机默认
+Device details	设备详情
+Connect: %s	连接:%s
+Cancel	取消
+[ Back ]	[ 返回 ]
+[ Return to MinUI ]	[ 返回 MinUI ]
+
+# main list
+USB Storage (SD Card): %s	USB 存储(SD 卡):%s
+ADB Debugging: %s	ADB 调试:%s
+USB Serial (CDC-ACM): %s	USB 串口(CDC-ACM):%s
+USB Network: %s  (A: more)	USB 网络:%s  (A:更多)
+USB Host (OTG): %s	USB 主机(OTG):%s
+Boot Defaults  (A: choose)	开机默认  (A:选择)
+< ON >	< 开 >
+< OFF >	< 关 >
+< ON (Read-Write, risky) >	< 开(读写,有风险) >
+< ON (Read-Only) >	< 开(只读) >
+< ON +Internet >	< 开 +上网 >
+< ON Local >	< 开 仅本地 >
+< ON >  (A: devices)	< 开 >  (A:设备列表)
+< OFF >  (A: open)	< 关 >  (A:打开)
+ON	开
+OFF	关
+
+# status line
+Active: Storage=%s | ADB=%s | Serial=%s | Net=%s	当前:存储=%s | ADB=%s | 串口=%s | 网络=%s
+NET 192.168.7.1 +inet	网络 192.168.7.1 +上网
+NET 192.168.7.1 local	网络 192.168.7.1 仅本地
+All USB Gadget Functions Disabled	已关闭所有 USB 设备功能
+USB Host ON (ADB/USB gadget unavailable while Host is on)	USB 主机已开启(主机模式下 ADB/USB 设备功能不可用)
+USB Storage Ejected by Computer	USB 存储已被电脑弹出
+Applying USB Storage Mode...	正在应用 USB 存储模式...
+Serial (CDC-ACM) ON; Network turned off (not enough endpoints)	串口(CDC-ACM)已开启;网络已关闭(端点不足)
+Ready - Use UP/DOWN & LEFT/RIGHT or A	就绪 - 用 上/下 和 左/右 或 A 操作
+RW: PC and device both write the SD card, can corrupt it. Prefer Read-Only; use a card reader to copy files.	读写:电脑和设备同时写 SD 卡,可能损坏数据。请优先用只读;拷文件请用读卡器。
+
+# network page
+Mode: %s	模式:%s
+Network Type: < %s >	网络类型:< %s >
+How to connect: < %s >  (A: open)	连接方法:< %s >  (A:打开)
+< ON (+Internet via PC) >	< 开(通过电脑上网) >
+< ON (Local only) >	< 开(仅本地) >
+NCM (Mac/Linux/Win11)	NCM(Mac/Linux/Win11)
+RNDIS (Windows)	RNDIS(Windows)
+ECM (Mac/Linux)	ECM(Mac/Linux)
+Applying USB Network...	正在应用 USB 网络...
+Mode: ON(+Internet) = route via PC. ON(Local only) = no gateway.	模式:开(+上网)=经电脑转发上网;开(仅本地)=不设网关。
+Type %s. Re-run the share script on the PC after switching.	类型 %s。切换后请在电脑上重新运行共享脚本。
+ECM: Mac/Linux  NCM: Mac/Linux/Win11  RNDIS: Windows (Mac: no)	ECM:Mac/Linux  NCM:Mac/Linux/Win11  RNDIS:Windows(Mac 不支持)
+Share scripts: SD card Tools/m21/USB Mode.pak/host-tools	共享脚本:SD 卡 Tools/m21/USB Mode.pak/host-tools
+
+# boot defaults page
+Choose what USB turns on at every boot. Saved automatically.	选择每次开机时自动打开的 USB 功能,修改后自动保存。
+[%c] ADB Debugging	[%c] ADB 调试
+[%c] USB Storage: %s	[%c] USB 存储:%s
+[%c] USB Serial (CDC-ACM)	[%c] USB 串口(CDC-ACM)
+[%c] USB Network	[%c] USB 网络
+      Network Type: < %s >	      网络类型:< %s >
+< Read-Write >	< 读写 >
+< Read-Only >	< 只读 >
+< Off >	< 关 >
+ADB will start at boot	开机时启动 ADB
+ADB will NOT start at boot (use with care)	开机时不启动 ADB(请谨慎)
+SD card shown to the PC at boot: %s	开机时向电脑显示 SD 卡:%s
+read-only	只读
+no	否
+Serial ON: USB Network turned off (they exclude each other)	已开启串口:USB 网络已关闭(两者互斥)
+Serial console (ttyGS0) at boot	开机启用串口控制台(ttyGS0)
+Serial off at boot	开机不启用串口
+Network ON: USB Serial turned off (they exclude each other)	已开启网络:USB 串口已关闭(两者互斥)
+USB Network at boot (sharing: see USB Network page)	开机启用 USB 网络(共享设置见 USB 网络页)
+USB Network off at boot	开机不启用 USB 网络
+Network type: %s	网络类型:%s
+
+# USB host page
+Needs a SELF-POWERED hub: this port gives no 5V	需要自带电源的 USB 集线器:本接口不输出 5V
+Switching to USB Host...	正在切换到 USB 主机...
+Ejecting and switching back to device mode...	正在弹出并切换回设备模式...
+Host ON. Plug a self-powered hub / device.	主机已开启。请接入自带电源的集线器或设备。
+Host OFF (device mode restored)	主机已关闭(已恢复设备模式)
+Host mode: %s	主机模式:%s
+(no devices - plug a powered hub)	(没有设备 - 请接入带电源的集线器)
+ - reading...	 - 读取中...
+ - mounted (%llu MB)	 - 已挂载(%llu MB)
+ - ejected (safe to unplug)	 - 已弹出(可安全拔出)
+ - mount failed	 - 挂载失败
+ - mounting...	 - 挂载中...
+%s  %s  %s Mbps	%s  %s  %s Mbps
+Type: %s%s   ID: %s	类型:%s%s   ID:%s
+ (built-in)	(内置)
+Port: %s   Speed: %s Mbps   USB %s	端口:%s   速率:%s Mbps   USB %s
+Vendor: %s   Power: %s	厂商:%s   电流:%s
+Serial: %s	序列号:%s
+Interfaces(%s): %s	接口(%s):%s
+%s: not mounted (%s)	%s:未挂载(%s)
+pending	等待中
+no partitions detected yet	尚未检测到分区
+Network adapter: no driver for it in this kernel unless listed above	网卡:本内核没有对应驱动(除非上面已列出)
+Hub: devices behind it are listed on the previous page	集线器:其后的设备在上一页列出
+Eject (unmount, safe to unplug)%s	弹出(卸载,可安全拔出)%s
+  - nothing mounted	  - 没有已挂载的
+Mount / retry%s	挂载 / 重试%s
+  - already mounted	  - 已挂载
+Details (mount path, filesystem, size)	详情(挂载路径、文件系统、大小)
+Ejected %s - safe to unplug (A > Mount to reuse)	已弹出 %s - 可安全拔出(A > 挂载 可重新使用)
+%s: nothing is mounted	%s:没有已挂载的分区
+Mounting %s...	正在挂载 %s...
+
+# help page (one entry per paragraph)
+Use Network Type NCM (Windows 11) or RNDIS (Windows 10/11). ECM has no Windows driver.	网络类型请选 NCM(Windows 11)或 RNDIS(Windows 10/11)。ECM 在 Windows 上没有驱动。
+Windows gets 192.168.7.2 automatically, the device is 192.168.7.1.	Windows 会自动获得 192.168.7.2,设备地址是 192.168.7.1。
+Share the PC's Internet with the device:	让设备使用电脑的网络:
+ 1. Plug in USB, set USB Network to ON (+Internet).	 1. 插上 USB 线,把 USB 网络设为 开(+上网)。
+ 2. Copy share-internet-windows.bat and share-internet-windows.ps1 from the SD card folder Tools/m21/USB Mode.pak/host-tools to the PC (turn on USB Storage, or use a card reader).	 2. 把 SD 卡里 Tools/m21/USB Mode.pak/host-tools 下的 share-internet-windows.bat 和 share-internet-windows.ps1 拷到电脑(打开 USB 存储,或用读卡器)。
+ 3. Double-click share-internet-windows.bat and allow the administrator prompt. The script finds the USB adapter and shares your Wi-Fi/Ethernet with it.	 3. 双击 share-internet-windows.bat 并允许管理员权限。脚本会找到 USB 网卡,并把你的 Wi-Fi/网线共享给它。
+ 4. On the device: adb shell, then ping 8.8.8.8 and ping www.baidu.com.	 4. 在设备上:adb shell,然后 ping 8.8.8.8 和 ping www.baidu.com。
+Run the .bat again after changing Network Type or re-plugging the cable (Windows creates a new adapter). To stop: share-internet-windows.bat off	更换网络类型或重新插线后要再运行一次 .bat(Windows 会新建网卡)。停止共享:share-internet-windows.bat off
+If it does not work, run usb-diag-windows.bat (same folder) and look at usb-diag.txt.	如果不通,运行 usb-diag-windows.bat(同一文件夹)并查看 usb-diag.txt。
+USB Serial (ACM) appears as a COM port in Device Manager (Ports).	USB 串口(ACM)会在设备管理器的“端口”里显示为 COM 口。
+Use Network Type ECM or NCM. RNDIS is not supported on macOS.	网络类型请选 ECM 或 NCM。macOS 不支持 RNDIS。
+A new network interface appears (System Settings > Network). The Mac gets 192.168.7.2 automatically, the device is 192.168.7.1.	系统设置 > 网络里会出现新网口。Mac 会自动获得 192.168.7.2,设备地址是 192.168.7.1。
+Share the Mac's Internet with the device:	让设备使用 Mac 的网络:
+ 2. Copy share-internet-macos.sh from the SD card folder Tools/m21/USB Mode.pak/host-tools to the Mac.	 2. 把 SD 卡里 Tools/m21/USB Mode.pak/host-tools 下的 share-internet-macos.sh 拷到 Mac。
+ 3. In Terminal run:	 3. 在“终端”里运行:
+    (when the uplink is not auto-detected, e.g. with a VPN: sudo sh share-internet-macos.sh on en0)	    (如果没能自动识别出上行网口,例如开了 VPN:sudo sh share-internet-macos.sh on en0)
+ 4. On the device: adb shell, then ping 8.8.8.8	 4. 在设备上:adb shell,然后 ping 8.8.8.8
+Run it again after changing Network Type or re-plugging. To stop:	更换网络类型或重新插线后要再运行一次。停止共享:
+USB Serial (ACM) appears as /dev/cu.usbmodem*; use: screen /dev/cu.usbmodem* 115200	USB 串口(ACM)在 Mac 上是 /dev/cu.usbmodem*,用法:screen /dev/cu.usbmodem* 115200
+Use Network Type ECM or NCM (RNDIS also works). The PC gets 192.168.7.2 automatically, the device is 192.168.7.1.	网络类型请选 ECM 或 NCM(RNDIS 也可以)。电脑会自动获得 192.168.7.2,设备地址是 192.168.7.1。
+ 2. Copy share-internet-linux.sh from the SD card folder Tools/m21/USB Mode.pak/host-tools to the PC.	 2. 把 SD 卡里 Tools/m21/USB Mode.pak/host-tools 下的 share-internet-linux.sh 拷到电脑。
+ 3. In a terminal run:	 3. 在终端里运行:
+    (or name the uplink interface: sudo sh share-internet-linux.sh on wlan0)	    (或指定上行网口:sudo sh share-internet-linux.sh on wlan0)
+To stop:	停止共享:
+USB Serial (ACM) appears as /dev/ttyACM0; use: screen /dev/ttyACM0 115200	USB 串口(ACM)在 Linux 上是 /dev/ttyACM0,用法:screen /dev/ttyACM0 115200

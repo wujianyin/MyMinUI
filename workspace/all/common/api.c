@@ -248,6 +248,7 @@ int currentcputemp = 0;
 int show_debug = 0;
 
 SDL_Surface* GFX_init(int mode) {
+	I18N_init();
 	PLAT_initLid();
 	gfx.screen = PLAT_initVideo();
 	gfx.vsync = VSYNC_STRICT;
@@ -798,7 +799,7 @@ int GFX_blitButtonGroup(char** pairs, int primary, SDL_Surface* dst, int align_r
 		if (HAS_SKINNY_SCREEN && i!=primary) continue; // space saving
 		
 		button = pairs[i * 2];
-		hint = pairs[i * 2 + 1];
+		hint = (char*)TR(pairs[i * 2 + 1]); // hints are translated here, button labels are physical keys
 		w = GFX_getButtonWidth(hint, button);
 		hints[h].hint = hint;
 		hints[h].button = button;
@@ -1920,9 +1921,9 @@ void PWR_powerOff(void) {
 		
 		char* msg;
 		if (HAS_POWER_BUTTON || HAS_POWEROFF_BUTTON) {
-			msg = exists(AUTO_RESUME_PATH) ? "Quicksave created,\npowering off" : "Powering off";
+			msg = exists(AUTO_RESUME_PATH) ? (char*)TR("Quicksave created,\npowering off") : (char*)TR("Powering off");
 		} else {
-			msg = exists(AUTO_RESUME_PATH) ? "Quicksave created,\npower off now" : "Power off now";
+			msg = exists(AUTO_RESUME_PATH) ? (char*)TR("Quicksave created,\npower off now") : (char*)TR("Power off now");
 		}
 		
 		// LOG_info("PWR_powerOff %s (%ix%i)\n", gfx.screen, gfx.screen->w, gfx.screen->h);
